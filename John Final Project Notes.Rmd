@@ -1,0 +1,39 @@
+---
+title: "Final Project Notes"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+```
+
+The .RData file contains two elements, a matrix of genotypes G (571 individuals x 30328 markers) and a data frame of phenotypes (570 individuals x 12 fields) with the following information:
+
+Progeny: ID of the line
+MotherID: ID of the mother
+FatherID: ID of the father
+CWT_*: Cumulative fruit weight
+CCT_*: Cumulative fruit count
+CAWT_*: Average weight per fruit (i.e. CWT/CCT)
+
+The 3 phenotypes (CWT, CCT and CAWT) were measured in three environments (WEO, SAL1, SAL2). SAL1/SAL2 is the same environment measured across two years (SAL1: year 1 and SAL2: year 2)
+
+You are free to do whatever analyses you feel relevant. Something you may want to include is a predictive model that uses SAL1 data to predict SAL2.
+
+Because this is an unpublished dataset, I randomized both sample and marker names. They look like gibberish but match across the dataset.
+
+```{r}
+load("FinalProjectData.RData")
+```
+
+inQ5IDMeqY = Unphenotyped mother
+
+Four sets of genomes
+28 total chromosomes
+
+29 plants died
+44 bore no fruit
