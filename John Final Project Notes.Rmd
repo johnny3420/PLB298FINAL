@@ -31,7 +31,8 @@ load("FinalProjectData.RData")
 ```
 
 inQ5IDMeqY = Unphenotyped mother
-
+   AAAA
+   
 Four sets of genomes
 28 total chromosomes
 
