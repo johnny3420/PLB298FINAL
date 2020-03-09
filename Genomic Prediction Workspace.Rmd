@@ -1,0 +1,56 @@
+---
+title: "Genomic Prediction Workspace"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# Laod libraries
+library(ggplot2)
+library(reshape2)
+library(glmnet)
+library(BGLR)
+library(tidyverse)
+```
+
+```{r}
+# Performance metric ------------------------------------------------------
+get_MSE <- function(y, yhat) mean((y-yhat)**2, na.rm=T)  # Compute MSEs
+```
+
+```{r}
+# Prepare data ------------------------------------------------------------
+load("FinalProjectData.RData")
+```
+
+```{r}
+Run_Prediction <- function(Model = NULL, Response = NULL, Genotypes = NULL, Train_Size = 0.8, Seed = NULL){
+  
+  # Repeatability
+  if(!(is.null(Seed))) set.seed(Seed)
+  
+  # Build Test and Train sets
+  n <- length(Response)
+  ix <- sample(1:n, floor(n*Train_Size), replace=F)
+  
+  mask_train <- rep(F, n); mask_train[ix] <- T
+  mask_test <- rep(T, n); mask_test[ix] <- F
+  
+  y_train_na <- Response; y_train_na[mask_test] <- NA
+  X_train <- Genotypes[mask_train,]; y_train <- Response[mask_train]
+  
+  y_test_na <- Response; y_test_na[mask_train] <- NA
+  X_test <- Genotypes[mask_test,]; y_test <- Response[mask_test]
+  
+  # Run model
+  if(Model == "linear"){
+    fit <- lm(y_train_na ~ Genotypes)
+    print(fit)
+    yhat <- predict(fit, Genotypes = Genotypes)
+  }
+}
+```
+
