@@ -1,0 +1,152 @@
+---
+title: "Genomic Prediction Workspace"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# Load libraries
+library(ggplot2)
+library(reshape2)
+library(glmnet)
+library(BGLR)
+library(tidyverse)
+library(randomForest)
+library(e1071)
+```
+
+```{r}
+# Load data
+load("FinalProjectData.RData")
+
+# Add an empty row to phenotype for missing mother
+pheno[nrow(pheno) +1, ] <- NA
+pheno$Progeny[nrow(pheno)] <- "inQ5IDMeqY"
+
+# Reorder genotype dataframe to match
+G <- G[order(match(rownames(G),pheno$Progeny)),]
+
+# Check
+all.equal(rownames(G), pheno$Progeny)
+dim(G)
+dim(pheno)
+```
+
+```{r}
+
+y <- pheno$CAWT_WEO; X <- G[,sample(1:ncol(G), 200)]; Train_Size <- 0.8; Seed <- 554
+
+Run_MSE <- function(y = NULL, X = NULL, Train_Size = 0.8, Seed = NULL){
+  
+  # MSE function
+  get_MSE <- function(y, yhat) mean((y-yhat)**2, na.rm=T)  # Compute MSEs
+  
+  mses <- c()
+  Models <- c("standard lm", "lm_LASSO", "lm_RR", "lm_Balance", "B_FIXED", "B_LASSO", "B_RR",
+              "RKHS", "RandomForest", "Krn_linear", "Krn_poly", "Krn_radial", "Krn_sigmoid")
+  
+  # Repeatability
+  if(!(is.null(Seed))) set.seed(Seed)
+  
+  # Build Test and Train sets
+  n <- length(y)
+  train_idx <- sample(1:n, floor(n*Train_Size), replace=F)
+  test_idx <- (1:n)[!(1:n %in% train_idx)]
+  y_train <- y[train_idx]
+  X_train <- X[train_idx,]
+  y_test <- y[test_idx]
+  X_test <- X[test_idx,]
+  nas_train <- which(is.na(y_train))
+  nas_test <- which(is.na(y_test))
+  
+  ### Run models
+  
+  ## LINEAR
+  # Standard linear regression
+  y_train_na <- y; y_train_na[test_idx] <- NA
+  y_test_na <- y; y_test_na[train_idx] <- NA
+  fit_l0 <- lm(y_train_na ~ X)
+  yhat_test_l0 <- predict(fit_l0, newdata = data.frame(X=X, y=y))
+  mses <- c(mses, round(get_MSE(y_test_na, yhat_test_l0),2))
+  
+  # LASSO regression
+  fit_l1 <- glmnet(X_train[-nas_train,], y_train[-nas_train], alpha=1)
+  yhat_test_l1 <- predict(fit_l1, X_test, s = 0.05, type = "response")
+  mses <- c(mses, round(get_MSE(y_test, yhat_test_l1),2))
+  
+  # Ridge regression
+  fit_l2 <- glmnet(X_train[-nas_train,], y_train[-nas_train], alpha=0)  
+  yhat_test_l2 <- predict(fit_l1, X_test, s = 10, type = "response")
+  mses <- c(mses, round(get_MSE(y_test, yhat_test_l2),2))
+  
+  # "Balanced" elastic net regression
+  fit_l1_l2 <- glmnet(X_train[-nas_train,], y_train[-nas_train], alpha=0.5)
+  yhat_test_l1_l2 <- predict(fit_l1, X_test, s = 0.05, type = "response")
+  mses <- c(mses, round(get_MSE(y_test, yhat_test_l1_l2),2))
+  
+  ## BAYESIAN
+  # Bayesian with Standard linear regression
+  fit_B_l0 <- BGLR(y=y_train_na, ETA=list(list(X=X, model="FIXED")))
+  yhat_test_B_l0 <- predict(fit_B_l0)
+  mses <- c(mses, round(get_MSE(y_test_na, yhat_test_B_l0),2))
+
+  # Bayesian LASSO regression
+  fit_B_l1 <- BGLR(y=y_train_na, ETA=list(list(X=X, model="BL"))) 
+  yhat_test_B_l1 <- predict(fit_B_l1)
+  mses <- c(mses, round(get_MSE(y_test_na, yhat_test_B_l1),2))
+  
+  # Bayesian Ridge regression
+  fit_B_l2 <- BGLR(y=y_train_na, ETA=list(list(X=X, model="BRR"))) 
+  yhat_test_B_l2 <- predict(fit_B_l2)
+  mses <- c(mses, round(get_MSE(y_test_na, yhat_test_B_l2),2))
+  
+  ## KERNALLIN
+  # RKHS regression
+  K <- cov(t(X))
+  fit_B_KT <- BGLR(y=y_train_na, ETA=list(list(K=K, model="RKHS")))
+  yhat_test_B_KT <- predict(fit_B_KT)
+  mses <- c(mses, round(get_MSE(y_test_na, yhat_test_B_KT),2))
+  
+  ## RANDOM FOREST
+  # RandomForest
+  fit_rf <- randomForest(x=X_train[-nas_train,], y=y_train[-nas_train], xtest=X_test[-nas_test,], ytest=y_test[-nas_test], ntree=500)
+  yhat_test_rf <- fit_rf$test$predicted
+  mses <- c(mses, round(get_MSE(y_test[-nas_test], yhat_test_rf),2))
+  
+  ## SVR
+  # Linear kernel
+  fit_svm <- svm(x=X, y=y_train_na, kernel="linear")
+  yhat_test_svm <- predict(fit_svm)
+  mses <- c(mses, round(get_MSE(y_test_na, yhat_test_svm),2))
+
+  # Quadratic polynomial
+  fit_svm <- svm(x=X, y=y_train_na, kernel="polynomial", degree=2)
+  yhat_test_svm <- predict(fit_svm)
+  mses <- c(mses, round(get_MSE(y_test_na, yhat_test_svm),2))
+
+  # Gaussian (RBF)
+  fit_svm <- svm(x = X, y = y_train_na, kernel = "radial")
+  yhat_test_svm <- predict(fit_svm)
+  mses <- c(mses, round(get_MSE(y_test_na, yhat_test_svm),2))
+  
+  # Sigmoid
+  fit_svm <- svm(x = X, y = y_train_na, kernel = "sigmoid")
+  yhat_test_svm <- predict(fit_svm)
+  mses <- c(mses, round(get_MSE(y_test_na, yhat_test_svm),2))
+  
+  df <- data.frame(Model = Models, MSE = mses) %>% arrange(MSE)
+  return(df)
+}
+
+A <- Run_MSE(y = y, X = X, Train_Size = 0.8, Seed = Seed)
+A
+```
+
+
+
+
+
+
