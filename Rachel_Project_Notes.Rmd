@@ -16,14 +16,31 @@ library(qtl)
 #load
 load("~/R/Classes/PLS298_QuantGen/PLB298FINAL/FinalProjectData.RData")
 markers <- read.table("~/R/Classes/PLS298_QuantGen/PLB298FINAL/markers.txt", quote="\"", comment.char="")
+```
 
+```{r, echo=FALSE}
 #Add Chromosome row to G
-colnames(markers) <- c("Chr","Code","Marker","A","B"); tmarkers <- t(markers); colnames(tmarkers) <- markers$Marker; tmarkerchr <- data.frame(tmarkers["Chr",]); colnames(tmarkerchr) <- "Chr"; markerchr <- t(tmarkerchr)
+colnames(markers) <- c("Chr","Position","Marker","A","B"); tmarkers <- t(markers); colnames(tmarkers) <- markers$Marker; tmarkerchr <- data.frame(tmarkers["Chr",], tmarkers["Position",]); colnames(tmarkerchr) <- c("Chr", "Position"); markerchr <- t(tmarkerchr)
 G <- rbind(markerchr, G)
+rownames(G)[rownames(G) == "Chr"] = ""
+rownames(G)[rownames(G) == "Position"] = ""
+tG <- t(G)
+tG <- tG[order(tG[,1],tG[,2]),]
+tG <- tG[,-2]
+G <- t(tG)
+G <- cbind(rownames(G), data.frame(G, row.names=NULL))
+colnames(G)[colnames(G) == "rownames(G)"] = "ID"
 
+colnames(pheno)[colnames(pheno) == "Progeny"] = "ID"
+
+#Write out files
 write.csv(G, file = "G.csv", append = F, na = "NA", row.names = TRUE, col.names = TRUE)
 write.csv(pheno, file = "pheno.csv", append = F, col.names = T, row.names = T, na = "NA")
-crossobj <- read.cross(c("csv"), dir = "~/R/Classes/PLS298_QuantGen/PLB298FINAL/", genfile = "G.csv", phefile = "pheno.csv", )
+```
+
+```{r, echo=FALSE}
+#Add cross
+crossobj <- read.cross(c("csvs"), dir = "~/R/Classes/PLS298_QuantGen/PLB298FINAL/", genfile = "G.csv", phefile = "pheno.csv", estimate.map = FALSE)
 ```
 
 QTL Mapping and Linkage
