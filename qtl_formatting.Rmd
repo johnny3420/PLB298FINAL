@@ -1,0 +1,49 @@
+---
+title: "Untitled"
+author: "John D."
+date: "3/10/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+load("FinalProjectData.RData")
+markers <- read_delim("markers.txt", delim = " ", col_names = c("chromosome","position","marker","ref","alt"))
+
+#geno file
+ID <- rownames(G)
+G <- G + 1
+G <- cbind(ID,G)
+
+# Marker ordering
+headers <- data.frame(markers$marker,markers$chromosome)
+headers <- headers[match(colnames(G), headers$markers.marker),]
+headers <- t(headers)
+chroms <- headers[2,]
+G <- rbind(chroms,G)
+G <- as.data.frame(G)
+colnames(G) <- c("ID", headers[1,-1])
+G$ID <- as.character(G$ID)
+G[1,1] <- ""
+write_delim(as.data.frame(G), "GENO.csv", col_names = T, delim = ",")
+
+#pheno file
+colnames(pheno)[1] <- "ID"
+write_delim(pheno, "PHENO.csv", col_names = T, delim = ",")
+
+library(qtl);set.seed(043298)
+crossobj <- read.cross(format = "csvs",
+                       dir = ".",
+                       genfile = "GENO.csv",
+                       phefile = "PHENO.csv",
+                       estimate.map = FALSE,
+                       genotypes = c(0,1,2,3,4),
+                       na.strings = c("-1",NA)
+                       )
+crossobj <- jittermap(crossobj)
+```
+
