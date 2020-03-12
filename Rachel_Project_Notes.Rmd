@@ -87,6 +87,15 @@ crossobj <- read.cross(format = "csvs",
 summary(crossobj)
 crossobj <- jittermap(crossobj)
 ```
+Optional: form linkage groups
+```{r, echo=F}
+newcrossobj <- formLinkageGroups(crossobj, max.rf=0.35, min.lod=6, reorgMarkers=TRUE, verbose=FALSE)
+newcrossobj <- orderMarkers(newcrossobj, use.ripple = TRUE, window = 5, map.function = c("kosambi"), verbose = T)
+plot(newcrossobj)
+summaryMap(newcrossobj)
+```
+
+
 
 QTL Mapping and Linkage
 
@@ -142,7 +151,7 @@ histogram(pheno$CWT_SAL2)
 histogram(pheno$CCT_SAL2)
 histogram(pheno$CAWT_SAL2)
 ```
-
+WEO
 ```{r, echo=FALSE}
 #CWT_WEO
 miss <- pheno[is.na(pheno$CWT_WEO),]
@@ -302,4 +311,75 @@ us9$Marker <- rownames(us9)
 MI2_CAWT_SAL2 <- merge(markers,us9,by="Marker",all.x = TRUE)
 colnames(MI2_CAWT_SAL2) <- c("Marker","Chrom","Position","ref","alt","CAWT_SAL2 beta","p.val","CAWT_SAL2 Fstat","R2","R2s")
 manhattan(MI2_CAWT_SAL2, pch=20,cex=.5, PVCN = "color score")
+```
+
+Checking the outcome
+```{r, echo=FALSE}
+PVAL <-function(score){
+  pval <-sort(10^(-score))
+  return(pval)
+}
+
+lambda <-function(pval){
+  chisq <-qchisq(1-pval,1)
+  lambda <-median(chisq)/qchisq(0.5,1)
+  return(lambda)
+}
+
+pval1<-PVAL(MI2$p.val)
+lambda(pval1)
+qqPlot(pval1)
+
+pval2<-PVAL(MI2_CWT_SAL1$p.val)
+lambda(pval2)
+qqPlot(pval2)
+
+pval3<-PVAL(MI2_CWT_SAL2$p.val)
+lambda(pval3)
+qqPlot(pval3)
+
+pval4<-PVAL(MI2_CCT_WEO$p.val)
+lambda(pval4)
+qqPlot(pval4)
+
+pval5<-PVAL(MI2_CCT_SAL1$p.val)
+lambda(pval5)
+qqPlot(pval5)
+
+pval6<-PVAL(MI2_CCT_SAL2$p.val)
+lambda(pval6)
+qqPlot(pval6)
+
+pval7<-PVAL(MI2_CAWT_WEO$p.val)
+lambda(pval7)
+qqPlot(pval7)
+
+pval8<-PVAL(MI2_CAWT_SAL1$p.val)
+lambda(pval8)
+qqPlot(pval8)
+
+pval9<-PVAL(MI2_CAWT_SAL2$p.val)
+lambda(pval9)
+qqPlot(pval9)
+```
+
+
+Mutivariate attempt
+```{r, echo=FALSE}
+#CWT_multiple years
+miss10 <- pheno[is.na(pheno$CWT_SAL2),]
+MixCWT_yr <- sommer::GWAS(fixed = cbind(CWT_SAL1,CWT_SAL2)~Year,
+                     random=~vs(ID, Gu= KA),
+                     rcov=~units,
+                     data=pheno[which(pheno$ID %in% rownames(KA)),],
+                     n.PC = 0,
+                     min.MAF=0,
+                     M= GO[!(rownames(GO) %in% miss10$ID),],
+                     gTerm = "u:ID")
+
+us7 <- as.data.frame(t(UniCWT_SAL2$scores))
+us7$Marker <- rownames(us7)
+MI2_CWT_SAL2 <- merge(markers,us7,by="Marker",all.x = TRUE)
+colnames(MI2_CWT_SAL2) <- c("Marker","Chrom","Position","ref","alt","CWT_SAL2 beta","p.val","CWT_SAL2 Fstat","R2","R2s")
+manhattan(MI2_CWT_SAL2, pch=20,cex=.5, PVCN = "color score")
 ```
