@@ -13,14 +13,18 @@ knitr::opts_chunk$set(echo = TRUE)
 #libraries
 library(qtl);set.seed(043298)
 library("tidyverse")
+library("sommer")
+library("lme4")
+library("GWASTools")
 ```
 
 ```{r, echo = FALSE}
 #load
 load("FinalProjectData.RData")
 markers <- read_delim("~/R/Classes/PLS298_QuantGen/PLB298FINAL/markers.txt", delim = " ", col_names = c("Chr","Position","Marker","ref","alt"))
+GO <- G #for later GWAS
 ```
-
+Manipulate Files
 ```{r, echo=FALSE}
 #adjust G
 G <- G + 1 #keep before adding chr and position
@@ -62,7 +66,6 @@ G <- gsub("Chr","",G)
 #geno file
 G <- as.data.frame(G) #maybe keep? after renaming chromosomes to functional diploid and ordering markers
 write_delim(as.data.frame(G), "GENO.csv", col_names = T, delim = ",") #also after all G adjustments
-#pheno <- as.data.frame(pheno) #maybe keep? after renaming chromosomes to functional diploid and ordering markers
 write_delim(as.data.frame(pheno), "PHENO.csv", col_names = T, delim = ",")
 
 #Write out files
@@ -70,6 +73,8 @@ write_delim(as.data.frame(pheno), "PHENO.csv", col_names = T, delim = ",")
 #write.csv(pheno, file = "PHENO.csv")
 ```
 
+
+Read the Cross
 ```{r, echo=FALSE}
 #Add cross
 crossobj <- read.cross(format = "csvs", 
@@ -115,7 +120,186 @@ summary(map.cross.CAWT)
 GWAS
 
 ```{r, echo=FALSE}
+# don't need to impute, M.impute <- round(A.mat(GO, impute.method="EM", max.missing = 0.8, return.imputed=T)$imputed)
+KA <- A.mat(GO)
+round(mean(diag(KA)),2)
 
+#look for signs of population structure
+KA.eigen <- eigen(KA)
+PCA.KA <- KA.eigen[["values"]]/sum(KA.eigen[["values"]])
+plot(PCA.KA)
 ```
 
+```{r, echo=FALSE}
+#let's see them histograms
+histogram(pheno$CWT_WEO)
+histogram(pheno$CCT_WEO)
+histogram(pheno$CAWT_WEO)
+histogram(pheno$CWT_SAL1)
+histogram(pheno$CCT_SAL1)
+histogram(pheno$CAWT_SAL1)
+histogram(pheno$CWT_SAL2)
+histogram(pheno$CCT_SAL2)
+histogram(pheno$CAWT_SAL2)
+```
 
+```{r, echo=FALSE}
+#CWT_WEO
+miss <- pheno[is.na(pheno$CWT_WEO),]
+UniCWT <- sommer::GWAS(fixed = cbind(CWT_WEO~1),
+                     random=~vs(ID, Gu= KA),
+                     rcov=~units,
+                     data=pheno[which(pheno$ID %in% rownames(KA)),],
+                     n.PC = 0,
+                     min.MAF=0,
+                     M= GO[!(rownames(GO) %in% miss$ID),],
+                     gTerm = "u:ID")
+
+us <- as.data.frame(t(UniCWT$scores))
+us$Marker <- rownames(us)
+MI2 <- merge(markers,us,by="Marker",all.x = TRUE)
+colnames(MI2) <- c("Marker","Chrom","Position","ref","alt","CWT_WEO beta","p.val","CWT_WEO Fstat","R2","R2s")
+manhattan(MI2, pch=20,cex=.5, PVCN = "color score")
+
+#CCT_WEO
+miss2 <- pheno[is.na(pheno$CCT_WEO),]
+UniCCT_WEO <- sommer::GWAS(fixed = cbind(CCT_WEO~1),
+                     random=~vs(ID, Gu= KA),
+                     rcov=~units,
+                     data=pheno[which(pheno$ID %in% rownames(KA)),],
+                     n.PC = 0,
+                     min.MAF=0,
+                     M= GO[!(rownames(GO) %in% miss2$ID),],
+                     gTerm = "u:ID")
+
+us2 <- as.data.frame(t(UniCCT_WEO$scores))
+us2$Marker <- rownames(us2)
+MI2_CCT_WEO <- merge(markers,us2,by="Marker",all.x = TRUE)
+colnames(MI2_CCT_WEO) <- c("Marker","Chrom","Position","ref","alt","CCT_WEO beta","p.val","CCT_WEO Fstat","R2","R2s")
+manhattan(MI2_CCT_WEO, pch=20,cex=.5, PVCN = "color score")
+
+#CAWT_WEO
+miss3 <- pheno[is.na(pheno$CAWT_WEO),]
+UniCAWT_WEO <- sommer::GWAS(fixed = cbind(CAWT_WEO~1),
+                     random=~vs(ID, Gu= KA),
+                     rcov=~units,
+                     data=pheno[which(pheno$ID %in% rownames(KA)),],
+                     n.PC = 0,
+                     min.MAF=0,
+                     M= GO[!(rownames(GO) %in% miss3$ID),],
+                     gTerm = "u:ID")
+
+us3 <- as.data.frame(t(UniCAWT_WEO$scores))
+us3$Marker <- rownames(us3)
+MI2_CAWT_WEO <- merge(markers,us3,by="Marker",all.x = TRUE)
+colnames(MI2_CAWT_WEO) <- c("Marker","Chrom","Position","ref","alt","CAWT_WEO beta","p.val","CAWT_WEO Fstat","R2","R2s")
+manhattan(MI2_CAWT_WEO, pch=20,cex=.5, PVCN = "color score")
+
+```
+SAL1
+```{r, echo=FALSE}
+#CWT_SAL1
+miss4 <- pheno[is.na(pheno$CWT_SAL1),]
+UniCWT_SAL1 <- sommer::GWAS(fixed = cbind(CWT_SAL1~1),
+                     random=~vs(ID, Gu= KA),
+                     rcov=~units,
+                     data=pheno[which(pheno$ID %in% rownames(KA)),],
+                     n.PC = 0,
+                     min.MAF=0,
+                     M= GO[!(rownames(GO) %in% miss4$ID),],
+                     gTerm = "u:ID")
+
+us4 <- as.data.frame(t(UniCWT_SAL1$scores))
+us4$Marker <- rownames(us4)
+MI2_CWT_SAL1 <- merge(markers,us4,by="Marker",all.x = TRUE)
+colnames(MI2_CWT_SAL1) <- c("Marker","Chrom","Position","ref","alt","CWT_SAL1 beta","p.val","CWT_SAL1 Fstat","R2","R2s")
+manhattan(MI2_CWT_SAL1, pch=20,cex=.5, PVCN = "color score")
+
+#CCT_SAL1
+miss5 <- pheno[is.na(pheno$CCT_SAL1),]
+UniCCT_SAL1 <- sommer::GWAS(fixed = cbind(CCT_SAL1~1),
+                     random=~vs(ID, Gu= KA),
+                     rcov=~units,
+                     data=pheno[which(pheno$ID %in% rownames(KA)),],
+                     n.PC = 0,
+                     min.MAF=0,
+                     M= GO[!(rownames(GO) %in% miss5$ID),],
+                     gTerm = "u:ID")
+
+us5 <- as.data.frame(t(UniCCT_SAL1$scores))
+us5$Marker <- rownames(us5)
+MI2_CCT_SAL1 <- merge(markers,us5,by="Marker",all.x = TRUE)
+colnames(MI2_CCT_SAL1) <- c("Marker","Chrom","Position","ref","alt","CCT_SAL1 beta","p.val","CCT_SAL1 Fstat","R2","R2s")
+manhattan(MI2_CCT_SAL1, pch=20,cex=.5, PVCN = "color score")
+
+#CAWT_SAL1
+miss6 <- pheno[is.na(pheno$CAWT_SAL1),]
+UniCAWT_SAL1 <- sommer::GWAS(fixed = cbind(CAWT_SAL1~1),
+                     random=~vs(ID, Gu= KA),
+                     rcov=~units,
+                     data=pheno[which(pheno$ID %in% rownames(KA)),],
+                     n.PC = 0,
+                     min.MAF=0,
+                     M= GO[!(rownames(GO) %in% miss6$ID),],
+                     gTerm = "u:ID")
+
+us6 <- as.data.frame(t(UniCAWT_SAL1$scores))
+us6$Marker <- rownames(us6)
+MI2_CAWT_SAL1 <- merge(markers,us6,by="Marker",all.x = TRUE)
+colnames(MI2_CAWT_SAL1) <- c("Marker","Chrom","Position","ref","alt","CAWT_SAL1 beta","p.val","CAWT_SAL1 Fstat","R2","R2s")
+manhattan(MI2_CAWT_SAL1, pch=20,cex=.5, PVCN = "color score")
+```
+
+SAL2
+```{r, echo=FALSE}
+#CWT_SAL2
+miss7 <- pheno[is.na(pheno$CWT_SAL2),]
+UniCWT_SAL2 <- sommer::GWAS(fixed = cbind(CWT_SAL2~1),
+                     random=~vs(ID, Gu= KA),
+                     rcov=~units,
+                     data=pheno[which(pheno$ID %in% rownames(KA)),],
+                     n.PC = 0,
+                     min.MAF=0,
+                     M= GO[!(rownames(GO) %in% miss7$ID),],
+                     gTerm = "u:ID")
+
+us7 <- as.data.frame(t(UniCWT_SAL2$scores))
+us7$Marker <- rownames(us7)
+MI2_CWT_SAL2 <- merge(markers,us7,by="Marker",all.x = TRUE)
+colnames(MI2_CWT_SAL2) <- c("Marker","Chrom","Position","ref","alt","CWT_SAL2 beta","p.val","CWT_SAL2 Fstat","R2","R2s")
+manhattan(MI2_CWT_SAL2, pch=20,cex=.5, PVCN = "color score")
+
+#CCT_SAL1
+miss8 <- pheno[is.na(pheno$CCT_SAL2),]
+UniCCT_SAL2 <- sommer::GWAS(fixed = cbind(CCT_SAL2~1),
+                     random=~vs(ID, Gu= KA),
+                     rcov=~units,
+                     data=pheno[which(pheno$ID %in% rownames(KA)),],
+                     n.PC = 0,
+                     min.MAF=0,
+                     M= GO[!(rownames(GO) %in% miss8$ID),],
+                     gTerm = "u:ID")
+
+us8 <- as.data.frame(t(UniCCT_SAL2$scores))
+us8$Marker <- rownames(us8)
+MI2_CCT_SAL2 <- merge(markers,us8,by="Marker",all.x = TRUE)
+colnames(MI2_CCT_SAL2) <- c("Marker","Chrom","Position","ref","alt","CCT_SAL2 beta","p.val","CCT_SAL2 Fstat","R2","R2s")
+manhattan(MI2_CCT_SAL2, pch=20,cex=.5, PVCN = "color score")
+
+#CAWT_SAL2
+miss9 <- pheno[is.na(pheno$CAWT_SAL2),]
+UniCAWT_SAL2 <- sommer::GWAS(fixed = cbind(CAWT_SAL2~1),
+                     random=~vs(ID, Gu= KA),
+                     rcov=~units,
+                     data=pheno[which(pheno$ID %in% rownames(KA)),],
+                     n.PC = 0,
+                     min.MAF=0,
+                     M= GO[!(rownames(GO) %in% miss9$ID),],
+                     gTerm = "u:ID")
+
+us9 <- as.data.frame(t(UniCAWT_SAL2$scores))
+us9$Marker <- rownames(us9)
+MI2_CAWT_SAL2 <- merge(markers,us9,by="Marker",all.x = TRUE)
+colnames(MI2_CAWT_SAL2) <- c("Marker","Chrom","Position","ref","alt","CAWT_SAL2 beta","p.val","CAWT_SAL2 Fstat","R2","R2s")
+manhattan(MI2_CAWT_SAL2, pch=20,cex=.5, PVCN = "color score")
+```

@@ -13,6 +13,7 @@ knitr::opts_chunk$set(echo = TRUE)
 #libraries
 library(qtl);set.seed(043298)
 library("tidyverse")
+library("sommer")
 ```
 
 ```{r, echo = FALSE}
@@ -100,5 +101,11 @@ summary(pmap.cross.CCT)
 pmap.cross.CAWT <- scanone(polycrossobj, pheno.col = c(4,7,10), method = c("em"))
 plot(pmap.cross.CAWT)
 summary(pmap.cross.CAWT)
+
+```
+
+GWAS
+```{r, echo=FALSE}
+
 
 ```
