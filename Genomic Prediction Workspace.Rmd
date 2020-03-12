@@ -110,10 +110,15 @@ Run_MSE <- function(y = NULL, X = NULL, Train_Size = 0.8, Seed = NULL){
   
   ## RANDOM FOREST
   # RandomForest
+  if(length(nas_test) == 0){
+    fit_rf <- randomForest(x=X_train[-nas_train,], y=y_train[-nas_train], xtest=X_test, ytest=y_test, ntree=500)
+  yhat_test_rf <- fit_rf$test$predicted
+  mses <- c(mses, round(get_MSE(y_test[-nas_test], yhat_test_rf),2))
+  } else {
   fit_rf <- randomForest(x=X_train[-nas_train,], y=y_train[-nas_train], xtest=X_test[-nas_test,], ytest=y_test[-nas_test], ntree=500)
   yhat_test_rf <- fit_rf$test$predicted
   mses <- c(mses, round(get_MSE(y_test[-nas_test], yhat_test_rf),2))
-  
+  }
   ## SVR
   # Linear kernel
   fit_svm <- svm(x=X, y=y_train_na, kernel="linear")
@@ -443,3 +448,788 @@ hist(pheno$CAWT_SAL2)
 
 ```
 
+## Run it all
+```{r}
+CAWT_WEO <- Run_MSE(y = pheno$CAWT_WEO, X = G, Train_Size = 0.8, Seed = 666)
+CAWT_WEO
+
+CAWT_SAL1 <- Run_MSE(y = pheno$CAWT_SAL1, X = G, Train_Size = 0.8, Seed = 666)
+CAWT_SAL1
+
+CAWT_SAL2 <- Run_MSE(y = pheno$CAWT_SAL2, X = G, Train_Size = 0.8, Seed = 666)
+CAWT_SAL2
+
+CCT_WEO <- Run_MSE(y = pheno$CCT_WEO, X = G, Train_Size = 0.8, Seed = 666)
+CCT_WEO
+
+CCT_SAL1 <- Run_MSE(y = pheno$CCT_SAL1, X = G, Train_Size = 0.8, Seed = 666)
+CCT_SAL1
+
+CCT_SAL2 <- Run_MSE(y = pheno$CCT_SAL2, X = G, Train_Size = 0.8, Seed = 666)
+CCT_SAL2
+
+CWT_WEO <- Run_MSE(y = pheno$CWT_WEO, X = G, Train_Size = 0.8, Seed = 666)
+CWT_WEO
+
+CWT_SAL1 <- Run_MSE(y = pheno$CWT_SAL1, X = G, Train_Size = 0.8, Seed = 666)
+CWT_SAL1
+
+CWT_SAL2 <- Run_MSE(y = pheno$CWT_SAL2, X = G, Train_Size = 0.8, Seed = 666)
+CWT_SAL2
+```
+
+```{r}
+#Year 1 vs Year 2 CAWT SAL
+year_1 <- pheno$CAWT_SAL1
+year_2 <- pheno$CAWT_SAL2
+seed <- 666
+# can drop unphenotyped mother
+year_1 <- year_1[-571]
+year_2 <- year_2[-571]
+X <- G[-571,]
+
+# MSE function
+get_MSE <-
+  function(y, yhat)
+    mean((y - yhat) ** 2, na.rm = T)  # Compute MSEs
+
+mses <- c()
+Models <-
+  c(
+    "standard lm",
+    "lm_LASSO",
+    "lm_RR",
+    "lm_Balance",
+    "B_FIXED",
+    "B_LASSO",
+    "B_RR",
+    "RKHS",
+    "RandomForest",
+    "Krn_linear",
+    "Krn_poly",
+    "Krn_radial",
+    "Krn_sigmoid"
+  )
+
+# Repeatability
+if (!(is.null(Seed)))
+  set.seed(Seed)
+
+# Build Train/Test set
+y_train <- year_1
+y_test <- year_2
+
+### Run models
+
+## LINEAR
+    # Standard linear regression
+fit_l0 <- lm(y_train ~ X)
+yhat_test_l0 <- predict(fit_l0, newdata = data.frame(X = X, y = y_test))
+mses <- c(mses, round(get_MSE(y_test, yhat_test_l0), 2))
+
+     # LASSO regression
+fit_l1 <- glmnet(X, y_train, alpha = 1)
+yhat_test_l1 <- predict(fit_l1, X, s = 0.05, type = "response")
+mses <- c(mses, round(get_MSE(y_test, yhat_test_l1), 2))
+
+# Ridge regression
+fit_l2 <- glmnet(X, y_train, alpha = 0)
+yhat_test_l2 <- predict(fit_l1, X, s = 10, type = "response")
+mses <- c(mses, round(get_MSE(y_test, yhat_test_l2), 2))
+
+# "Balanced" elastic net regression
+fit_l1_l2 <- glmnet(X, y_train, alpha = 0.5)
+yhat_test_l1_l2 <- predict(fit_l1, X, s = 0.05, type = "response")
+mses <- c(mses, round(get_MSE(y_test, yhat_test_l1_l2), 2))
+
+## BAYESIAN
+# Bayesian with Standard linear regression
+fit_B_l0 <- BGLR(y = y_train, ETA = list(list(X = X, model = "FIXED")))
+yhat_test_B_l0 <- predict(fit_B_l0)
+mses <- c(mses, round(get_MSE(y_test, yhat_test_B_l0), 2))
+
+# Bayesian LASSO regression
+fit_B_l1 <- BGLR(y = y_train, ETA = list(list(X = X, model = "BL")))
+yhat_test_B_l1 <- predict(fit_B_l1)
+mses <- c(mses, round(get_MSE(y_test, yhat_test_B_l1), 2))
+
+# Bayesian Ridge regression
+fit_B_l2 <- BGLR(y = y_train, ETA = list(list(X = X, model = "BRR")))
+yhat_test_B_l2 <- predict(fit_B_l2)
+mses <- c(mses, round(get_MSE(y_test, yhat_test_B_l2), 2))
+
+## KERNALLIN
+# RKHS regression
+K <- cov(t(X))
+fit_B_KT <- BGLR(y = y_train, ETA = list(list(K = K, model = "RKHS")))
+yhat_test_B_KT <- predict(fit_B_KT)
+mses <- c(mses, round(get_MSE(y_test, yhat_test_B_KT), 2))
+
+## RANDOM FOREST
+# RandomForest
+test_nas <- which(is.na(y_test))
+fit_rf <-
+  randomForest(
+    x = X,
+    y = y,
+    xtest = X[-test_nas,],
+    ytest = y_test[-test_nas],
+    ntree = 500
+  )
+yhat_test_rf <- fit_rf$test$predicted
+mses <- c(mses, round(get_MSE(y_test[-test_nas], yhat_test_rf), 2))
+
+## SVR
+# Linear kernel
+fit_svm <- svm(x = X, y = y_train, kernel = "linear")
+yhat_test_svm <- predict(fit_svm)
+mses <- c(mses, round(get_MSE(y_test, yhat_test_svm), 2))
+
+# Quadratic polynomial
+fit_svm <- svm(x = X, y = y_train, kernel = "polynomial", degree = 2)
+yhat_test_svm <- predict(fit_svm)
+mses <- c(mses, round(get_MSE(y_test, yhat_test_svm), 2))
+
+# Gaussian (RBF)
+fit_svm <- svm(x = X, y = y_train, kernel = "radial")
+yhat_test_svm <- predict(fit_svm)
+mses <- c(mses, round(get_MSE(y_test, yhat_test_svm), 2))
+
+# Sigmoid
+fit_svm <- svm(x = X, y = y_train, kernel = "sigmoid")
+yhat_test_svm <- predict(fit_svm)
+mses <- c(mses, round(get_MSE(y_test, yhat_test_svm), 2))
+
+Year2Year <- data.frame(Model = Models, MSE = mses) %>% arrange(MSE)
+#save(CAWT_SAL1,CAWT_SAL2,CAWT_WEO,Year2Year, file = "CAWT_Results.RData")
+```
+
+```{r}
+#Year 1 vs Year 2 CAWT WEO
+year_1 <- pheno$CAWT_WEO
+year_2 <- pheno$CAWT_SAL2
+seed <- 666
+# can drop unphenotyped mother
+year_1 <- year_1[-571]
+year_2 <- year_2[-571]
+X <- G[-571,]
+
+# MSE function
+get_MSE <-
+  function(y, yhat)
+    mean((y - yhat) ** 2, na.rm = T)  # Compute MSEs
+
+mses <- c()
+Models <-
+  c(
+    "standard lm",
+    "lm_LASSO",
+    "lm_RR",
+    "lm_Balance",
+    "B_FIXED",
+    "B_LASSO",
+    "B_RR",
+    "RKHS",
+    "RandomForest",
+    "Krn_linear",
+    "Krn_poly",
+    "Krn_radial",
+    "Krn_sigmoid"
+  )
+
+# Repeatability
+if (!(is.null(Seed)))
+  set.seed(Seed)
+
+# Build Train/Test set
+y_train <- year_1
+y_test <- year_2
+
+### Run models
+
+## LINEAR
+    # Standard linear regression
+fit_l0 <- lm(y_train ~ X)
+yhat_test_l0 <- predict(fit_l0, newdata = data.frame(X = X, y = y_test))
+mses <- c(mses, round(get_MSE(y_test, yhat_test_l0), 2))
+
+     # LASSO regression
+fit_l1 <- glmnet(X, y_train, alpha = 1)
+yhat_test_l1 <- predict(fit_l1, X, s = 0.05, type = "response")
+mses <- c(mses, round(get_MSE(y_test, yhat_test_l1), 2))
+
+# Ridge regression
+fit_l2 <- glmnet(X, y_train, alpha = 0)
+yhat_test_l2 <- predict(fit_l1, X, s = 10, type = "response")
+mses <- c(mses, round(get_MSE(y_test, yhat_test_l2), 2))
+
+# "Balanced" elastic net regression
+fit_l1_l2 <- glmnet(X, y_train, alpha = 0.5)
+yhat_test_l1_l2 <- predict(fit_l1, X, s = 0.05, type = "response")
+mses <- c(mses, round(get_MSE(y_test, yhat_test_l1_l2), 2))
+
+## BAYESIAN
+# Bayesian with Standard linear regression
+fit_B_l0 <- BGLR(y = y_train, ETA = list(list(X = X, model = "FIXED")))
+yhat_test_B_l0 <- predict(fit_B_l0)
+mses <- c(mses, round(get_MSE(y_test, yhat_test_B_l0), 2))
+
+# Bayesian LASSO regression
+fit_B_l1 <- BGLR(y = y_train, ETA = list(list(X = X, model = "BL")))
+yhat_test_B_l1 <- predict(fit_B_l1)
+mses <- c(mses, round(get_MSE(y_test, yhat_test_B_l1), 2))
+
+# Bayesian Ridge regression
+fit_B_l2 <- BGLR(y = y_train, ETA = list(list(X = X, model = "BRR")))
+yhat_test_B_l2 <- predict(fit_B_l2)
+mses <- c(mses, round(get_MSE(y_test, yhat_test_B_l2), 2))
+
+## KERNALLIN
+# RKHS regression
+K <- cov(t(X))
+fit_B_KT <- BGLR(y = y_train, ETA = list(list(K = K, model = "RKHS")))
+yhat_test_B_KT <- predict(fit_B_KT)
+mses <- c(mses, round(get_MSE(y_test, yhat_test_B_KT), 2))
+
+## RANDOM FOREST
+# RandomForest
+test_nas <- which(is.na(y_test))
+fit_rf <-
+  randomForest(
+    x = X,
+    y = y,
+    xtest = X[-test_nas,],
+    ytest = y_test[-test_nas],
+    ntree = 500
+  )
+yhat_test_rf <- fit_rf$test$predicted
+mses <- c(mses, round(get_MSE(y_test[-test_nas], yhat_test_rf), 2))
+
+## SVR
+# Linear kernel
+fit_svm <- svm(x = X, y = y_train, kernel = "linear")
+yhat_test_svm <- predict(fit_svm)
+mses <- c(mses, round(get_MSE(y_test, yhat_test_svm), 2))
+
+# Quadratic polynomial
+fit_svm <- svm(x = X, y = y_train, kernel = "polynomial", degree = 2)
+yhat_test_svm <- predict(fit_svm)
+mses <- c(mses, round(get_MSE(y_test, yhat_test_svm), 2))
+
+# Gaussian (RBF)
+fit_svm <- svm(x = X, y = y_train, kernel = "radial")
+yhat_test_svm <- predict(fit_svm)
+mses <- c(mses, round(get_MSE(y_test, yhat_test_svm), 2))
+
+# Sigmoid
+fit_svm <- svm(x = X, y = y_train, kernel = "sigmoid")
+yhat_test_svm <- predict(fit_svm)
+mses <- c(mses, round(get_MSE(y_test, yhat_test_svm), 2))
+
+Year2Year <- data.frame(Model = Models, MSE = mses) %>% arrange(MSE)
+#save(CAWT_SAL1,CAWT_SAL2,CAWT_WEO,Year2Year, file = "CAWT_Results.RData")
+```
+
+```{r}
+#Year 1 vs Year 2 CCT SAL
+year_1 <- pheno$CCT_SAL1
+year_2 <- pheno$CCT_SAL2
+seed <- 666
+# can drop unphenotyped mother
+year_1 <- year_1[-571]
+year_2 <- year_2[-571]
+X <- G[-571,]
+
+# MSE function
+get_MSE <-
+  function(y, yhat)
+    mean((y - yhat) ** 2, na.rm = T)  # Compute MSEs
+
+mses <- c()
+Models <-
+  c(
+    "standard lm",
+    "lm_LASSO",
+    "lm_RR",
+    "lm_Balance",
+    "B_FIXED",
+    "B_LASSO",
+    "B_RR",
+    "RKHS",
+    "RandomForest",
+    "Krn_linear",
+    "Krn_poly",
+    "Krn_radial",
+    "Krn_sigmoid"
+  )
+
+# Repeatability
+if (!(is.null(Seed)))
+  set.seed(Seed)
+
+# Build Train/Test set
+y_train <- year_1
+y_test <- year_2
+
+### Run models
+
+## LINEAR
+    # Standard linear regression
+fit_l0 <- lm(y_train ~ X)
+yhat_test_l0 <- predict(fit_l0, newdata = data.frame(X = X, y = y_test))
+mses <- c(mses, round(get_MSE(y_test, yhat_test_l0), 2))
+
+     # LASSO regression
+fit_l1 <- glmnet(X, y_train, alpha = 1)
+yhat_test_l1 <- predict(fit_l1, X, s = 0.05, type = "response")
+mses <- c(mses, round(get_MSE(y_test, yhat_test_l1), 2))
+
+# Ridge regression
+fit_l2 <- glmnet(X, y_train, alpha = 0)
+yhat_test_l2 <- predict(fit_l1, X, s = 10, type = "response")
+mses <- c(mses, round(get_MSE(y_test, yhat_test_l2), 2))
+
+# "Balanced" elastic net regression
+fit_l1_l2 <- glmnet(X, y_train, alpha = 0.5)
+yhat_test_l1_l2 <- predict(fit_l1, X, s = 0.05, type = "response")
+mses <- c(mses, round(get_MSE(y_test, yhat_test_l1_l2), 2))
+
+## BAYESIAN
+# Bayesian with Standard linear regression
+fit_B_l0 <- BGLR(y = y_train, ETA = list(list(X = X, model = "FIXED")))
+yhat_test_B_l0 <- predict(fit_B_l0)
+mses <- c(mses, round(get_MSE(y_test, yhat_test_B_l0), 2))
+
+# Bayesian LASSO regression
+fit_B_l1 <- BGLR(y = y_train, ETA = list(list(X = X, model = "BL")))
+yhat_test_B_l1 <- predict(fit_B_l1)
+mses <- c(mses, round(get_MSE(y_test, yhat_test_B_l1), 2))
+
+# Bayesian Ridge regression
+fit_B_l2 <- BGLR(y = y_train, ETA = list(list(X = X, model = "BRR")))
+yhat_test_B_l2 <- predict(fit_B_l2)
+mses <- c(mses, round(get_MSE(y_test, yhat_test_B_l2), 2))
+
+## KERNALLIN
+# RKHS regression
+K <- cov(t(X))
+fit_B_KT <- BGLR(y = y_train, ETA = list(list(K = K, model = "RKHS")))
+yhat_test_B_KT <- predict(fit_B_KT)
+mses <- c(mses, round(get_MSE(y_test, yhat_test_B_KT), 2))
+
+## RANDOM FOREST
+# RandomForest
+test_nas <- which(is.na(y_test))
+fit_rf <-
+  randomForest(
+    x = X,
+    y = y,
+    xtest = X[-test_nas,],
+    ytest = y_test[-test_nas],
+    ntree = 500
+  )
+yhat_test_rf <- fit_rf$test$predicted
+mses <- c(mses, round(get_MSE(y_test[-test_nas], yhat_test_rf), 2))
+
+## SVR
+# Linear kernel
+fit_svm <- svm(x = X, y = y_train, kernel = "linear")
+yhat_test_svm <- predict(fit_svm)
+mses <- c(mses, round(get_MSE(y_test, yhat_test_svm), 2))
+
+# Quadratic polynomial
+fit_svm <- svm(x = X, y = y_train, kernel = "polynomial", degree = 2)
+yhat_test_svm <- predict(fit_svm)
+mses <- c(mses, round(get_MSE(y_test, yhat_test_svm), 2))
+
+# Gaussian (RBF)
+fit_svm <- svm(x = X, y = y_train, kernel = "radial")
+yhat_test_svm <- predict(fit_svm)
+mses <- c(mses, round(get_MSE(y_test, yhat_test_svm), 2))
+
+# Sigmoid
+fit_svm <- svm(x = X, y = y_train, kernel = "sigmoid")
+yhat_test_svm <- predict(fit_svm)
+mses <- c(mses, round(get_MSE(y_test, yhat_test_svm), 2))
+
+Year2Year <- data.frame(Model = Models, MSE = mses) %>% arrange(MSE)
+#save(CAWT_SAL1,CAWT_SAL2,CAWT_WEO,Year2Year, file = "CAWT_Results.RData")
+```
+
+```{r}
+#Year 1 vs Year 2 CCT WEO
+year_1 <- pheno$CCT_WEO
+year_2 <- pheno$CCT_SAL2
+seed <- 666
+# can drop unphenotyped mother
+year_1 <- year_1[-571]
+year_2 <- year_2[-571]
+X <- G[-571,]
+
+# MSE function
+get_MSE <-
+  function(y, yhat)
+    mean((y - yhat) ** 2, na.rm = T)  # Compute MSEs
+
+mses <- c()
+Models <-
+  c(
+    "standard lm",
+    "lm_LASSO",
+    "lm_RR",
+    "lm_Balance",
+    "B_FIXED",
+    "B_LASSO",
+    "B_RR",
+    "RKHS",
+    "RandomForest",
+    "Krn_linear",
+    "Krn_poly",
+    "Krn_radial",
+    "Krn_sigmoid"
+  )
+
+# Repeatability
+if (!(is.null(Seed)))
+  set.seed(Seed)
+
+# Build Train/Test set
+y_train <- year_1
+y_test <- year_2
+
+### Run models
+
+## LINEAR
+    # Standard linear regression
+fit_l0 <- lm(y_train ~ X)
+yhat_test_l0 <- predict(fit_l0, newdata = data.frame(X = X, y = y_test))
+mses <- c(mses, round(get_MSE(y_test, yhat_test_l0), 2))
+
+     # LASSO regression
+fit_l1 <- glmnet(X, y_train, alpha = 1)
+yhat_test_l1 <- predict(fit_l1, X, s = 0.05, type = "response")
+mses <- c(mses, round(get_MSE(y_test, yhat_test_l1), 2))
+
+# Ridge regression
+fit_l2 <- glmnet(X, y_train, alpha = 0)
+yhat_test_l2 <- predict(fit_l1, X, s = 10, type = "response")
+mses <- c(mses, round(get_MSE(y_test, yhat_test_l2), 2))
+
+# "Balanced" elastic net regression
+fit_l1_l2 <- glmnet(X, y_train, alpha = 0.5)
+yhat_test_l1_l2 <- predict(fit_l1, X, s = 0.05, type = "response")
+mses <- c(mses, round(get_MSE(y_test, yhat_test_l1_l2), 2))
+
+## BAYESIAN
+# Bayesian with Standard linear regression
+fit_B_l0 <- BGLR(y = y_train, ETA = list(list(X = X, model = "FIXED")))
+yhat_test_B_l0 <- predict(fit_B_l0)
+mses <- c(mses, round(get_MSE(y_test, yhat_test_B_l0), 2))
+
+# Bayesian LASSO regression
+fit_B_l1 <- BGLR(y = y_train, ETA = list(list(X = X, model = "BL")))
+yhat_test_B_l1 <- predict(fit_B_l1)
+mses <- c(mses, round(get_MSE(y_test, yhat_test_B_l1), 2))
+
+# Bayesian Ridge regression
+fit_B_l2 <- BGLR(y = y_train, ETA = list(list(X = X, model = "BRR")))
+yhat_test_B_l2 <- predict(fit_B_l2)
+mses <- c(mses, round(get_MSE(y_test, yhat_test_B_l2), 2))
+
+## KERNALLIN
+# RKHS regression
+K <- cov(t(X))
+fit_B_KT <- BGLR(y = y_train, ETA = list(list(K = K, model = "RKHS")))
+yhat_test_B_KT <- predict(fit_B_KT)
+mses <- c(mses, round(get_MSE(y_test, yhat_test_B_KT), 2))
+
+## RANDOM FOREST
+# RandomForest
+test_nas <- which(is.na(y_test))
+fit_rf <-
+  randomForest(
+    x = X,
+    y = y,
+    xtest = X[-test_nas,],
+    ytest = y_test[-test_nas],
+    ntree = 500
+  )
+yhat_test_rf <- fit_rf$test$predicted
+mses <- c(mses, round(get_MSE(y_test[-test_nas], yhat_test_rf), 2))
+
+## SVR
+# Linear kernel
+fit_svm <- svm(x = X, y = y_train, kernel = "linear")
+yhat_test_svm <- predict(fit_svm)
+mses <- c(mses, round(get_MSE(y_test, yhat_test_svm), 2))
+
+# Quadratic polynomial
+fit_svm <- svm(x = X, y = y_train, kernel = "polynomial", degree = 2)
+yhat_test_svm <- predict(fit_svm)
+mses <- c(mses, round(get_MSE(y_test, yhat_test_svm), 2))
+
+# Gaussian (RBF)
+fit_svm <- svm(x = X, y = y_train, kernel = "radial")
+yhat_test_svm <- predict(fit_svm)
+mses <- c(mses, round(get_MSE(y_test, yhat_test_svm), 2))
+
+# Sigmoid
+fit_svm <- svm(x = X, y = y_train, kernel = "sigmoid")
+yhat_test_svm <- predict(fit_svm)
+mses <- c(mses, round(get_MSE(y_test, yhat_test_svm), 2))
+
+Year2Year <- data.frame(Model = Models, MSE = mses) %>% arrange(MSE)
+#save(CAWT_SAL1,CAWT_SAL2,CAWT_WEO,Year2Year, file = "CAWT_Results.RData")
+```
+
+```{r}
+#Year 1 vs Year 2 CWT SAL
+year_1 <- pheno$CWT_SAL1
+year_2 <- pheno$CWT_SAL2
+seed <- 666
+# can drop unphenotyped mother
+year_1 <- year_1[-571]
+year_2 <- year_2[-571]
+X <- G[-571,]
+
+# MSE function
+get_MSE <-
+  function(y, yhat)
+    mean((y - yhat) ** 2, na.rm = T)  # Compute MSEs
+
+mses <- c()
+Models <-
+  c(
+    "standard lm",
+    "lm_LASSO",
+    "lm_RR",
+    "lm_Balance",
+    "B_FIXED",
+    "B_LASSO",
+    "B_RR",
+    "RKHS",
+    "RandomForest",
+    "Krn_linear",
+    "Krn_poly",
+    "Krn_radial",
+    "Krn_sigmoid"
+  )
+
+# Repeatability
+if (!(is.null(Seed)))
+  set.seed(Seed)
+
+# Build Train/Test set
+y_train <- year_1
+y_test <- year_2
+
+### Run models
+
+## LINEAR
+    # Standard linear regression
+fit_l0 <- lm(y_train ~ X)
+yhat_test_l0 <- predict(fit_l0, newdata = data.frame(X = X, y = y_test))
+mses <- c(mses, round(get_MSE(y_test, yhat_test_l0), 2))
+
+     # LASSO regression
+fit_l1 <- glmnet(X, y_train, alpha = 1)
+yhat_test_l1 <- predict(fit_l1, X, s = 0.05, type = "response")
+mses <- c(mses, round(get_MSE(y_test, yhat_test_l1), 2))
+
+# Ridge regression
+fit_l2 <- glmnet(X, y_train, alpha = 0)
+yhat_test_l2 <- predict(fit_l1, X, s = 10, type = "response")
+mses <- c(mses, round(get_MSE(y_test, yhat_test_l2), 2))
+
+# "Balanced" elastic net regression
+fit_l1_l2 <- glmnet(X, y_train, alpha = 0.5)
+yhat_test_l1_l2 <- predict(fit_l1, X, s = 0.05, type = "response")
+mses <- c(mses, round(get_MSE(y_test, yhat_test_l1_l2), 2))
+
+## BAYESIAN
+# Bayesian with Standard linear regression
+fit_B_l0 <- BGLR(y = y_train, ETA = list(list(X = X, model = "FIXED")))
+yhat_test_B_l0 <- predict(fit_B_l0)
+mses <- c(mses, round(get_MSE(y_test, yhat_test_B_l0), 2))
+
+# Bayesian LASSO regression
+fit_B_l1 <- BGLR(y = y_train, ETA = list(list(X = X, model = "BL")))
+yhat_test_B_l1 <- predict(fit_B_l1)
+mses <- c(mses, round(get_MSE(y_test, yhat_test_B_l1), 2))
+
+# Bayesian Ridge regression
+fit_B_l2 <- BGLR(y = y_train, ETA = list(list(X = X, model = "BRR")))
+yhat_test_B_l2 <- predict(fit_B_l2)
+mses <- c(mses, round(get_MSE(y_test, yhat_test_B_l2), 2))
+
+## KERNALLIN
+# RKHS regression
+K <- cov(t(X))
+fit_B_KT <- BGLR(y = y_train, ETA = list(list(K = K, model = "RKHS")))
+yhat_test_B_KT <- predict(fit_B_KT)
+mses <- c(mses, round(get_MSE(y_test, yhat_test_B_KT), 2))
+
+## RANDOM FOREST
+# RandomForest
+test_nas <- which(is.na(y_test))
+fit_rf <-
+  randomForest(
+    x = X,
+    y = y,
+    xtest = X[-test_nas,],
+    ytest = y_test[-test_nas],
+    ntree = 500
+  )
+yhat_test_rf <- fit_rf$test$predicted
+mses <- c(mses, round(get_MSE(y_test[-test_nas], yhat_test_rf), 2))
+
+## SVR
+# Linear kernel
+fit_svm <- svm(x = X, y = y_train, kernel = "linear")
+yhat_test_svm <- predict(fit_svm)
+mses <- c(mses, round(get_MSE(y_test, yhat_test_svm), 2))
+
+# Quadratic polynomial
+fit_svm <- svm(x = X, y = y_train, kernel = "polynomial", degree = 2)
+yhat_test_svm <- predict(fit_svm)
+mses <- c(mses, round(get_MSE(y_test, yhat_test_svm), 2))
+
+# Gaussian (RBF)
+fit_svm <- svm(x = X, y = y_train, kernel = "radial")
+yhat_test_svm <- predict(fit_svm)
+mses <- c(mses, round(get_MSE(y_test, yhat_test_svm), 2))
+
+# Sigmoid
+fit_svm <- svm(x = X, y = y_train, kernel = "sigmoid")
+yhat_test_svm <- predict(fit_svm)
+mses <- c(mses, round(get_MSE(y_test, yhat_test_svm), 2))
+
+Year2Year <- data.frame(Model = Models, MSE = mses) %>% arrange(MSE)
+#save(CAWT_SAL1,CAWT_SAL2,CAWT_WEO,Year2Year, file = "CAWT_Results.RData")
+```
+
+```{r}
+#Year 1 vs Year 2 CWT WEO
+year_1 <- pheno$CWT_WEO
+year_2 <- pheno$CWT_SAL2
+seed <- 666
+# can drop unphenotyped mother
+year_1 <- year_1[-571]
+year_2 <- year_2[-571]
+X <- G[-571,]
+
+# MSE function
+get_MSE <-
+  function(y, yhat)
+    mean((y - yhat) ** 2, na.rm = T)  # Compute MSEs
+
+mses <- c()
+Models <-
+  c(
+    "standard lm",
+    "lm_LASSO",
+    "lm_RR",
+    "lm_Balance",
+    "B_FIXED",
+    "B_LASSO",
+    "B_RR",
+    "RKHS",
+    "RandomForest",
+    "Krn_linear",
+    "Krn_poly",
+    "Krn_radial",
+    "Krn_sigmoid"
+  )
+
+# Repeatability
+if (!(is.null(Seed)))
+  set.seed(Seed)
+
+# Build Train/Test set
+y_train <- year_1
+y_test <- year_2
+
+### Run models
+
+## LINEAR
+    # Standard linear regression
+fit_l0 <- lm(y_train ~ X)
+yhat_test_l0 <- predict(fit_l0, newdata = data.frame(X = X, y = y_test))
+mses <- c(mses, round(get_MSE(y_test, yhat_test_l0), 2))
+
+     # LASSO regression
+fit_l1 <- glmnet(X, y_train, alpha = 1)
+yhat_test_l1 <- predict(fit_l1, X, s = 0.05, type = "response")
+mses <- c(mses, round(get_MSE(y_test, yhat_test_l1), 2))
+
+# Ridge regression
+fit_l2 <- glmnet(X, y_train, alpha = 0)
+yhat_test_l2 <- predict(fit_l1, X, s = 10, type = "response")
+mses <- c(mses, round(get_MSE(y_test, yhat_test_l2), 2))
+
+# "Balanced" elastic net regression
+fit_l1_l2 <- glmnet(X, y_train, alpha = 0.5)
+yhat_test_l1_l2 <- predict(fit_l1, X, s = 0.05, type = "response")
+mses <- c(mses, round(get_MSE(y_test, yhat_test_l1_l2), 2))
+
+## BAYESIAN
+# Bayesian with Standard linear regression
+fit_B_l0 <- BGLR(y = y_train, ETA = list(list(X = X, model = "FIXED")))
+yhat_test_B_l0 <- predict(fit_B_l0)
+mses <- c(mses, round(get_MSE(y_test, yhat_test_B_l0), 2))
+
+# Bayesian LASSO regression
+fit_B_l1 <- BGLR(y = y_train, ETA = list(list(X = X, model = "BL")))
+yhat_test_B_l1 <- predict(fit_B_l1)
+mses <- c(mses, round(get_MSE(y_test, yhat_test_B_l1), 2))
+
+# Bayesian Ridge regression
+fit_B_l2 <- BGLR(y = y_train, ETA = list(list(X = X, model = "BRR")))
+yhat_test_B_l2 <- predict(fit_B_l2)
+mses <- c(mses, round(get_MSE(y_test, yhat_test_B_l2), 2))
+
+## KERNALLIN
+# RKHS regression
+K <- cov(t(X))
+fit_B_KT <- BGLR(y = y_train, ETA = list(list(K = K, model = "RKHS")))
+yhat_test_B_KT <- predict(fit_B_KT)
+mses <- c(mses, round(get_MSE(y_test, yhat_test_B_KT), 2))
+
+## RANDOM FOREST
+# RandomForest
+test_nas <- which(is.na(y_test))
+fit_rf <-
+  randomForest(
+    x = X,
+    y = y,
+    xtest = X[-test_nas,],
+    ytest = y_test[-test_nas],
+    ntree = 500
+  )
+yhat_test_rf <- fit_rf$test$predicted
+mses <- c(mses, round(get_MSE(y_test[-test_nas], yhat_test_rf), 2))
+
+## SVR
+# Linear kernel
+fit_svm <- svm(x = X, y = y_train, kernel = "linear")
+yhat_test_svm <- predict(fit_svm)
+mses <- c(mses, round(get_MSE(y_test, yhat_test_svm), 2))
+
+# Quadratic polynomial
+fit_svm <- svm(x = X, y = y_train, kernel = "polynomial", degree = 2)
+yhat_test_svm <- predict(fit_svm)
+mses <- c(mses, round(get_MSE(y_test, yhat_test_svm), 2))
+
+# Gaussian (RBF)
+fit_svm <- svm(x = X, y = y_train, kernel = "radial")
+yhat_test_svm <- predict(fit_svm)
+mses <- c(mses, round(get_MSE(y_test, yhat_test_svm), 2))
+
+# Sigmoid
+fit_svm <- svm(x = X, y = y_train, kernel = "sigmoid")
+yhat_test_svm <- predict(fit_svm)
+mses <- c(mses, round(get_MSE(y_test, yhat_test_svm), 2))
+
+Year2Year <- data.frame(Model = Models, MSE = mses) %>% arrange(MSE)
+#save(CAWT_SAL1,CAWT_SAL2,CAWT_WEO,Year2Year, file = "CAWT_Results.RData")
+```
