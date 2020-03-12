@@ -1,0 +1,240 @@
+---
+title: "Final_project"
+author: "Kreingkrai Nonkum"
+date: "March 3, 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r}
+library(sommer)
+load('FinalProjectData.RData')
+head(pheno)
+```
+
+## Histrogram of dataset
+```{r}
+library("ggplot2")
+library("gridExtra")
+hist(pheno$CWT_SAL1)
+hist(pheno$CCT_SAL1)
+hist(pheno$CAWT_SAL1)
+
+hist(pheno$CWT_SAL2)
+hist(pheno$CCT_SAL2)
+hist(pheno$CAWT_SAL2)
+
+CWTY1 = pheno$CWT_SAL1
+CWTY2 = pheno$CWT_SAL2
+
+boxplot(CWTY1, CWTY2, main = "Cumulative fruit weight", at = c(1,2), names = c("year1", "year2") )
+
+CCTY1 = pheno$CCT_SAL1
+CCTY2 = pheno$CCT_SAL2
+
+boxplot(CCTY1, CCTY2, main = "Cumulative fruit count", at = c(1,2), names = c("year1", "year2") )
+
+CAWTY1 = pheno$CAWT_SAL1
+CAWTY2 = pheno$CAWT_SAL2
+
+boxplot(CAWTY1, CAWTY2, main = "Average weight per fruit", at = c(1,2), names = c("year1", "year2") )
+
+
+
+mean(pheno$CWT_SAL1)
+var(pheno$CWT_SAL1)
+
+mean(pheno$CCT_SAL1)
+var(pheno$CCT_SAL1)
+
+mean(pheno$CAWT_SAL1)
+var(pheno$CAWT_SAL1)
+
+mean(pheno$CWT_SAL2)
+var(pheno$CWT_SAL2)
+
+mean(pheno$CCT_SAL2)
+var(pheno$CCT_SAL2)
+
+mean(pheno$CAWT_SAL2)
+var(pheno$CAWT_SAL2)
+
+CWT1 = ggplot(pheno, aes(CWT_SAL1)) + geom_histogram(color="blue") + xlab("Cumulative fruit weight1") + ylab("Frequency")
+CCT1 = ggplot(pheno, aes(CCT_SAL1)) + geom_histogram(color="blue") + xlab("Cumulative fruit count1") + ylab("Frequency")
+CAWT1 = ggplot(pheno, aes(CAWT_SAL1)) + geom_histogram(color="blue") + xlab("Average weight per fruit1") + ylab("Frequency")
+grid.arrange(CWT1, CCT1,CAWT1, nrow=1, ncol=3)
+
+CWT2 = ggplot(pheno, aes(CWT_SAL2)) + geom_histogram(color="blue") + xlab("Cumulative fruit weight2") + ylab("Frequency")
+CCT2 = ggplot(pheno, aes(CCT_SAL2)) + geom_histogram(color="blue") + xlab("Cumulative fruit count2") + ylab("Frequency")
+CAWT2 = ggplot(pheno, aes(CAWT_SAL2)) + geom_histogram(color="blue") + xlab("Average weight per fruit2") + ylab("Frequency")
+grid.arrange(CWT2, CCT2,CAWT2, nrow=1, ncol=3)
+
+```
+
+## plot of data
+
+```{r}
+# CWT1 vs CCT1
+p1 <- ggplot(pheno,aes(x=CWT_SAL1,y=CCT_SAL1)) + geom_point() + geom_smooth(method='lm',formula=y~x) +
+xlab("Cumulative fruit weight1") + ylab("Cumulative fruit count1") 
+
+
+# CWT2 vs CCT2
+p2 <- ggplot(pheno,aes(x=CWT_SAL2,y=CCT_SAL2)) + geom_point() + geom_smooth(method='lm',formula=y~x) +
+xlab("Cumulative fruit weight2") + ylab("Cumulative fruit count2") 
+
+
+# CWT1 vs CWT2
+p3 <- ggplot(pheno,aes(x=CWT_SAL1,y=CWT_SAL2)) + geom_point() + geom_smooth(method='lm',formula=y~x) +
+xlab("Cumulative fruit weight1") + ylab("Cumulative fruit weight2") 
+
+
+# CCT1 vs CCT2
+p4 <- ggplot(pheno,aes(x=CCT_SAL1,y=CCT_SAL2)) + geom_point() + geom_smooth(method='lm',formula=y~x) +
+xlab("Cumulative fruit count1") + ylab("Cumulative fruit count2") 
+
+
+plot= grid.arrange(p1,p2,p3,
+p4,
+nrow=2, ncol=2)
+```
+
+
+Kinship mattrix
+```{r}
+A <-A.mat(G)# additive relationship matrix
+D <-D.mat(G)# dominance relationship matrix
+E <-E.mat(G)# epistatic relationship matrix
+
+pheno$idd <-pheno$Progeny; pheno$ide <- pheno$Progeny
+```
+
+```{r}
+ans.ADE_CWT_SAL1 <- mmer(CWT_SAL1~1,
+random=~vs(Progeny,Gu=A) + vs(idd,Gu=D),
+rcov=~units,
+data=pheno)
+(summary(ans.ADE_CWT_SAL1)$varcomp)
+CWT1 <- pin(ans.ADE_CWT_SAL1, h2 ~ (V1) / ( V1+V3) )
+h2CWT1 = CWT1[1,1]
+#pin(ans.ADE_CWT_SAL1, h2 ~ (V1+V2) / ( V1+V2+V3) )
+
+ans.ADE_CCT_SAL1 <- mmer(CCT_SAL1~1,
+random=~vs(Progeny,Gu=A) + vs(idd,Gu=D),
+rcov=~units,
+data=pheno)
+(summary(ans.ADE_CCT_SAL1)$varcomp)
+CCT1 <- pin(ans.ADE_CCT_SAL1, h2 ~ (V1) / ( V1+V3) )
+h2CCT1 = CCT1[1,1]
+#pin(ans.ADE_CCT_SAL1, h2 ~ (V1+V2) / ( V1+V2+V3) )
+
+ans.ADE_CAWT_SAL1 <- mmer(CAWT_SAL1~1,
+random=~vs(Progeny,Gu=A) + vs(idd,Gu=D),
+rcov=~units,
+data=pheno)
+(summary(ans.ADE_CAWT_SAL1)$varcomp)
+CAWT1 <- pin(ans.ADE_CAWT_SAL1, h2 ~ (V1) / ( V1+V3) )
+h2CAWT1 = CAWT1[1,1]
+#pin(ans.ADE_CAWT_SAL1, h2 ~ (V1+V2) / ( V1+V2+V3) )
+
+ans.ADE_CWT_SAL2 <- mmer(CWT_SAL2~1,
+random=~vs(Progeny,Gu=A) + vs(idd,Gu=D),
+rcov=~units,
+data=pheno)
+(summary(ans.ADE_CWT_SAL2)$varcomp)
+CWT2 = pin(ans.ADE_CWT_SAL2, h2 ~ (V1) / ( V1+V3) )
+h2CWT2 = CWT2[1,1]
+#pin(ans.ADE_CWT_SAL2, h2 ~ (V1+V2) / ( V1+V2+V3) )
+
+ans.ADE_CCT_SAL2 <- mmer(CCT_SAL2~1,
+random=~vs(Progeny,Gu=A) + vs(idd,Gu=D),
+rcov=~units,
+data=pheno)
+(summary(ans.ADE_CCT_SAL2)$varcomp)
+CCT2 <- pin(ans.ADE_CCT_SAL2, h2 ~ (V1) / ( V1+V3) )
+h2CCT2 = CCT2[1,1]
+#pin(ans.ADE_CCT_SAL2, h2 ~ (V1+V2) / ( V1+V2+V3) )
+
+ans.ADE_CAWT_SAL2 <- mmer(CAWT_SAL2~1,
+random=~vs(Progeny,Gu=A) + vs(idd,Gu=D),
+rcov=~units,
+data=pheno)
+(summary(ans.ADE_CAWT_SAL2)$varcomp)
+CAWT2 <- pin(ans.ADE_CAWT_SAL2, h2 ~ (V1) / ( V1+V3) )
+h2CAWT2 = CAWT2[1,1]
+#pin(ans.ADE_CAWT_SAL2, h2 ~ (V1+V2) / ( V1+V2+V3) )
+```
+
+```{r}
+require(snpStats)
+library(synbreed)  # snpStats may be required to be installed from bioconductor first @ https://www.bioconductor.org/packages/release/bioc/html/snpStats.html
+dped <- create.pedigree(
+  as.character(pheno$Progeny), 
+  as.character(pheno$MotherID), 
+  as.character(pheno$FatherID),
+)
+plot(dped)
+A <- kin(dped)
+
+
+```
+
+```{r}
+library(rrBLUP)
+library(pheatmap)
+breaksList <- seq(-1, 1, length.out=101)
+
+Gmat <- A.mat(G, min.MAF = 0.05, max.missing=0.90, impute.method="mean", n.core=4, return.imputed = T)
+M <- Gmat$imputed
+G1 <- Gmat$A
+hist(G1)
+pheatmap(G1, breaks=breaksList, border_color = F)
+```
+
+
+```{r}
+pcoa <- cmdscale(as.dist(1-G1), k=2, eig=T)
+
+pca <- prcomp(M)
+plot(pcoa$eig, type="b")
+plot(pca$sdev^2, type="b")
+plot(pcoa$points)
+plot(pca$x)
+```
+
+```{r}
+impute = (A.mat(G,max.missing = 0.5, impute.method = "mean", return.imputed = TRUE))
+SNP_Markers_1_impute = impute$imputed
+######
+######
+training_entries <- as.matrix(sample(1:570, 285))
+testing_entries <- setdiff(1:570, training_entries)
+Pheno1 <- as.matrix(CWTY1)
+Pheno2 <- as.matrix(CCTY1)#CCTY1
+Pheno3 <- as.matrix(CAWTY1)#CAWTY1
+CWTY1_training_data = as.matrix(Pheno1[training_entries,])
+SNP_training_data <- as.matrix(SNP_Markers_1_impute[training_entries,])
+CWTY1_testing_data <- as.matrix(Pheno1[testing_entries,])
+SNP_testing_data <- as.matrix(SNP_Markers_1_impute[testing_entries,] ,K=NULL)
+
+trained_model <- mixed.solve(y=CWTY1_training_data, Z=SNP_training_data)
+
+marker_effects <- as.matrix(trained_model$u)
+BLUE <- as.vector(trained_model$beta)
+
+predicted_test = as.matrix(SNP_testing_data) %*% marker_effects
+predicted_train = as.matrix(SNP_training_data) %*% marker_effects
+predicted_test_result <- as.vector((predicted_test)+BLUE)
+predicted_train_result <- as.vector((predicted_train)+BLUE)
+
+```
+
