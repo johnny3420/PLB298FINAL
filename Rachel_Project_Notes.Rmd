@@ -13,31 +13,38 @@ knitr::opts_chunk$set(echo = TRUE)
 #libraries
 library(qtl);set.seed(043298)
 library("tidyverse")
+```
 
+```{r, echo = FALSE}
 #load
-load("~/R/Classes/PLS298_QuantGen/PLB298FINAL/FinalProjectData.RData")
-markers <- read.table("~/R/Classes/PLS298_QuantGen/PLB298FINAL/markers.txt", quote="\"", comment.char="")
+load("FinalProjectData.RData")
+markers <- read_delim("~/R/Classes/PLS298_QuantGen/PLB298FINAL/markers.txt", delim = " ", col_names = c("Chr","Position","Marker","ref","alt"))
 ```
 
 ```{r, echo=FALSE}
-#Add Chromosome and position rows to G
-colnames(markers) <- c("Chr","Position","Marker","A","B"); tmarkers <- t(markers); colnames(tmarkers) <- markers$Marker; tmarkerchr <- data.frame(tmarkers["Chr",], tmarkers["Position",]); colnames(tmarkerchr) <- c("Chr", "Position"); markerchr <- t(tmarkerchr)
-G <- rbind(markerchr, G)
-rownames(G)[rownames(G) == "Chr"] = ""
-rownames(G)[rownames(G) == "Position"] = ""
-
-#convert homologous chromosomes to functionally single chromosome
-G <- gsub("Fvb","",G)
-#because I can't find an elegant way to do this:
-G <- gsub("1-1","1",G);G <- gsub("1-2","1",G);G <- gsub("1-3","1",G);G <- gsub("1-4","1",G);G <- gsub("6-2","6",G);G <- gsub("2-1","2",G);G <- gsub("2-2","2",G);G <- gsub("2-3","2",G);G <- gsub("2-4","2",G);G <- gsub("4-1","4",G);G <- gsub("3-3","3",G);G <- gsub("7-4","7",G);G <- gsub("7-1","7",G);G <- gsub("3-2","3",G);G <- gsub("3-1","3",G);G <- gsub("3-4","3",G);G <- gsub("6-4","6",G);G <- gsub("6-1","6",G);G <- gsub("4-3","4",G);G <- gsub("7-3","7",G);G <- gsub("4-2","4",G);G <- gsub("5-2","5",G);G <- gsub("5-3","5",G);G <- gsub("4-4","4",G);G <- gsub("5-4","5",G);G <- gsub("5-1","5",G);G <- gsub("7-2","7",G);G <- gsub("6-3","6",G)
+#adjust G
+G <- G + 1 #keep before adding chr and position
 
 #small edits to pheno data
 colnames(pheno)[colnames(pheno) == "Progeny"] = "ID"
 pheno <- pheno[,-5] #remove MotherID
 pheno <- pheno[,-5] #remove FatherID
 pheno[nrow(pheno) +1, ] <- NA #add missing parent to phenotype file
-pheno$Progeny[nrow(pheno)] <- "inQ5IDMeqY"
+pheno$ID[nrow(pheno)] <- "inQ5IDMeqY"
 G <- G[order(match(rownames(G),pheno$ID)),] # Reorder genotype dataframe to match
+
+#Add Chromosome and position rows to G 
+tmarkers <- t(markers); colnames(tmarkers) <- markers$Marker; tmarkerchr <- data.frame(tmarkers["Chr",], tmarkers["Position",]); colnames(tmarkerchr) <- c("Chr", "Position"); markerchr <- t(tmarkerchr)
+G <- rbind(markerchr, G)
+#rownames(G)[rownames(G) == "Chr"] = ""
+#rownames(G)[rownames(G) == "Position"] = ""
+
+
+#convert homologous chromosomes to functionally single chromosome
+#because I can't find an elegant way to do this:
+G <- gsub("1-1","1",G);G <- gsub("1-2","1",G);G <- gsub("1-3","1",G);G <- gsub("1-4","1",G);G <- gsub("6-2","6",G);G <- gsub("2-1","2",G);G <- gsub("2-2","2",G);G <- gsub("2-3","2",G);G <- gsub("2-4","2",G);G <- gsub("4-1","4",G);G <- gsub("3-3","3",G);G <- gsub("7-4","7",G);G <- gsub("7-1","7",G);G <- gsub("3-2","3",G);G <- gsub("3-1","3",G);G <- gsub("3-4","3",G);G <- gsub("6-4","6",G);G <- gsub("6-1","6",G);G <- gsub("4-3","4",G);G <- gsub("7-3","7",G);G <- gsub("4-2","4",G);G <- gsub("5-2","5",G);G <- gsub("5-3","5",G);G <- gsub("4-4","4",G);G <- gsub("5-4","5",G);G <- gsub("5-1","5",G);G <- gsub("7-2","7",G);G <- gsub("6-3","6",G)
+#G <- gsub("Fvb","",G)
+
 
 #put markers in order
 tG <- t(G)
@@ -47,21 +54,62 @@ G <- t(tG)
 ID <- rownames(G)
 G <-cbind(ID,G)
 rownames(G) <- NULL
+G <- gsub("Chr","",G)
 
+#check G
+#G[1:3,1:4]
+
+#geno file
+G <- as.data.frame(G) #maybe keep? after renaming chromosomes to functional diploid and ordering markers
+write_delim(as.data.frame(G), "GENO.csv", col_names = T, delim = ",") #also after all G adjustments
+#pheno <- as.data.frame(pheno) #maybe keep? after renaming chromosomes to functional diploid and ordering markers
+write_delim(as.data.frame(pheno), "PHENO.csv", col_names = T, delim = ",")
 
 #Write out files
-write.csv(G, file = "G.csv")
-write.csv(pheno, file = "pheno.csv")
+#write.csv(G, file = "GENO.csv")
+#write.csv(pheno, file = "PHENO.csv")
 ```
 
 ```{r, echo=FALSE}
 #Add cross
-crossobj <- read.cross(c("csvs"), dir = "~/R/Classes/PLS298_QuantGen/PLB298FINAL/", genfile = "G.csv", phefile = "pheno.csv", estimate.map = FALSE, genotypes = c(-1,0,1,2,3), na.strings = c("-1",NA))
+crossobj <- read.cross(format = "csvs", 
+                       dir = "~/R/Classes/PLS298_QuantGen/PLB298FINAL/", 
+                       genfile = "GENO.csv", 
+                       phefile = "PHENO.csv", 
+                       estimate.map = FALSE, 
+                       genotypes = c(0,1,2,3,4), 
+                       na.strings = c("-1",NA))
+summary(crossobj)
+crossobj <- jittermap(crossobj)
 ```
 
 QTL Mapping and Linkage
 
 ```{r, echo=FALSE}
+#look for adjacent duplicates
+dups <- findDupMarkers(crossobj, exact.only = T, adjacent.only = T)
+
+#Are there any progeny with >90% identical genotypes?
+common.geno <- comparegeno(crossobj)
+mean(common.geno[lower.tri(common.geno)])
+range(common.geno[lower.tri(common.geno)])
+plot(common.geno)
+summary(common.geno, thresh = 0.9)
+
+#Map for Cumulative fruit weight in all env/yrs
+map.cross.CWT <- scanone(crossobj, pheno.col = c(2,5,8), method = c("em"))
+plot(map.cross.CWT)
+summary(map.cross.CWT)
+
+#Map for Cumulative fruit count in all env/yrs
+map.cross.CCT <- scanone(crossobj, pheno.col = c(3,6,9), method = c("em"))
+plot(map.cross.CCT)
+summary(map.cross.CCT)
+
+#Map for Average weight per fruit in all env/yrs
+map.cross.CAWT <- scanone(crossobj, pheno.col = c(4,7,10), method = c("em"))
+plot(map.cross.CAWT)
+summary(map.cross.CAWT)
 ```
 
 GWAS
