@@ -11,47 +11,375 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```{r, echo=FALSE}
 #libraries
-library(qtl)
-
-#load
-load("~/R/Classes/PLS298_QuantGen/PLB298FINAL/FinalProjectData.RData")
-markers <- read.table("~/R/Classes/PLS298_QuantGen/PLB298FINAL/markers.txt", quote="\"", comment.char="")
+library(qtl);set.seed(043298)
+library("tidyverse")
+library("sommer")
+library("lme4")
+library("GWASTools")
 ```
 
+```{r, echo = FALSE}
+#load
+load("FinalProjectData.RData")
+markers <- read_delim("~/R/Classes/PLS298_QuantGen/PLB298FINAL/markers.txt", delim = " ", col_names = c("Chr","Position","Marker","ref","alt"))
+GO <- G #for later GWAS
+```
+Manipulate Files
 ```{r, echo=FALSE}
-#Add Chromosome row to G
-colnames(markers) <- c("Chr","Position","Marker","A","B"); tmarkers <- t(markers); colnames(tmarkers) <- markers$Marker; tmarkerchr <- data.frame(tmarkers["Chr",], tmarkers["Position",]); colnames(tmarkerchr) <- c("Chr", "Position"); markerchr <- t(tmarkerchr)
+#adjust G
+G <- G + 1 #keep before adding chr and position
+
+#small edits to pheno data
+colnames(pheno)[colnames(pheno) == "Progeny"] = "ID"
+pheno <- pheno[,-5] #remove MotherID
+pheno <- pheno[,-5] #remove FatherID
+pheno[nrow(pheno) +1, ] <- NA #add missing parent to phenotype file
+pheno$ID[nrow(pheno)] <- "inQ5IDMeqY"
+G <- G[order(match(rownames(G),pheno$ID)),] # Reorder genotype dataframe to match
+
+#Add Chromosome and position rows to G 
+tmarkers <- t(markers); colnames(tmarkers) <- markers$Marker; tmarkerchr <- data.frame(tmarkers["Chr",], tmarkers["Position",]); colnames(tmarkerchr) <- c("Chr", "Position"); markerchr <- t(tmarkerchr)
 G <- rbind(markerchr, G)
-rownames(G)[rownames(G) == "Chr"] = ""
-rownames(G)[rownames(G) == "Position"] = ""
+#rownames(G)[rownames(G) == "Chr"] = ""
+#rownames(G)[rownames(G) == "Position"] = ""
+
+
+#convert homologous chromosomes to functionally single chromosome
+#because I can't find an elegant way to do this:
+G <- gsub("1-1","1",G);G <- gsub("1-2","1",G);G <- gsub("1-3","1",G);G <- gsub("1-4","1",G);G <- gsub("6-2","6",G);G <- gsub("2-1","2",G);G <- gsub("2-2","2",G);G <- gsub("2-3","2",G);G <- gsub("2-4","2",G);G <- gsub("4-1","4",G);G <- gsub("3-3","3",G);G <- gsub("7-4","7",G);G <- gsub("7-1","7",G);G <- gsub("3-2","3",G);G <- gsub("3-1","3",G);G <- gsub("3-4","3",G);G <- gsub("6-4","6",G);G <- gsub("6-1","6",G);G <- gsub("4-3","4",G);G <- gsub("7-3","7",G);G <- gsub("4-2","4",G);G <- gsub("5-2","5",G);G <- gsub("5-3","5",G);G <- gsub("4-4","4",G);G <- gsub("5-4","5",G);G <- gsub("5-1","5",G);G <- gsub("7-2","7",G);G <- gsub("6-3","6",G)
+#G <- gsub("Fvb","",G)
+
+
+#put markers in order
 tG <- t(G)
 tG <- tG[order(tG[,1],tG[,2]),]
 tG <- tG[,-2]
 G <- t(tG)
-G <- cbind(rownames(G), data.frame(G, row.names=NULL))
-colnames(G)[colnames(G) == "rownames(G)"] = "ID"
+ID <- rownames(G)
+G <-cbind(ID,G)
+rownames(G) <- NULL
+G <- gsub("Chr","",G)
 
-colnames(pheno)[colnames(pheno) == "Progeny"] = "ID"
+#check G
+#G[1:3,1:4]
+
+#geno file
+G <- as.data.frame(G) #maybe keep? after renaming chromosomes to functional diploid and ordering markers
+write_delim(as.data.frame(G), "GENO.csv", col_names = T, delim = ",") #also after all G adjustments
+write_delim(as.data.frame(pheno), "PHENO.csv", col_names = T, delim = ",")
 
 #Write out files
-write.csv(G, file = "G.csv", append = F, na = "NA", row.names = TRUE, col.names = TRUE)
-write.csv(pheno, file = "pheno.csv", append = F, col.names = T, row.names = T, na = "NA")
+#write.csv(G, file = "GENO.csv")
+#write.csv(pheno, file = "PHENO.csv")
 ```
 
+
+Read the Cross
 ```{r, echo=FALSE}
 #Add cross
-crossobj <- read.cross(c("csvs"), dir = "~/R/Classes/PLS298_QuantGen/PLB298FINAL/", genfile = "G.csv", phefile = "pheno.csv", estimate.map = FALSE)
+crossobj <- read.cross(format = "csvs", 
+                       dir = "~/R/Classes/PLS298_QuantGen/PLB298FINAL/", 
+                       genfile = "GENO.csv", 
+                       phefile = "PHENO.csv", 
+                       estimate.map = FALSE, 
+                       genotypes = c(0,1,2,3,4), 
+                       na.strings = c("-1",NA))
+summary(crossobj)
+crossobj <- jittermap(crossobj)
 ```
+Optional: form linkage groups
+```{r, echo=F}
+newcrossobj <- formLinkageGroups(crossobj, max.rf=0.35, min.lod=6, reorgMarkers=TRUE, verbose=FALSE)
+newcrossobj <- orderMarkers(newcrossobj, use.ripple = TRUE, window = 5, map.function = c("kosambi"), verbose = T)
+plot(newcrossobj)
+summaryMap(newcrossobj)
+```
+
+
 
 QTL Mapping and Linkage
 
 ```{r, echo=FALSE}
+#look for adjacent duplicates
+dups <- findDupMarkers(crossobj, exact.only = T, adjacent.only = T)
+
+#Are there any progeny with >90% identical genotypes?
+common.geno <- comparegeno(crossobj)
+mean(common.geno[lower.tri(common.geno)])
+range(common.geno[lower.tri(common.geno)])
+plot(common.geno)
+summary(common.geno, thresh = 0.9)
+
+#Map for Cumulative fruit weight in all env/yrs
+map.cross.CWT <- scanone(crossobj, pheno.col = c(2,5,8), method = c("em"))
+plot(map.cross.CWT)
+summary(map.cross.CWT)
+
+#Map for Cumulative fruit count in all env/yrs
+map.cross.CCT <- scanone(crossobj, pheno.col = c(3,6,9), method = c("em"))
+plot(map.cross.CCT)
+summary(map.cross.CCT)
+
+#Map for Average weight per fruit in all env/yrs
+map.cross.CAWT <- scanone(crossobj, pheno.col = c(4,7,10), method = c("em"))
+plot(map.cross.CAWT)
+summary(map.cross.CAWT)
 ```
 
 GWAS
 
 ```{r, echo=FALSE}
+# don't need to impute, M.impute <- round(A.mat(GO, impute.method="EM", max.missing = 0.8, return.imputed=T)$imputed)
+KA <- A.mat(GO)
+round(mean(diag(KA)),2)
 
+#look for signs of population structure
+KA.eigen <- eigen(KA)
+PCA.KA <- KA.eigen[["values"]]/sum(KA.eigen[["values"]])
+plot(PCA.KA)
+```
+
+```{r, echo=FALSE}
+#let's see them histograms
+histogram(pheno$CWT_WEO)
+histogram(pheno$CCT_WEO)
+histogram(pheno$CAWT_WEO)
+histogram(pheno$CWT_SAL1)
+histogram(pheno$CCT_SAL1)
+histogram(pheno$CAWT_SAL1)
+histogram(pheno$CWT_SAL2)
+histogram(pheno$CCT_SAL2)
+histogram(pheno$CAWT_SAL2)
+```
+WEO
+```{r, echo=FALSE}
+#CWT_WEO
+miss <- pheno[is.na(pheno$CWT_WEO),]
+UniCWT <- sommer::GWAS(fixed = cbind(CWT_WEO~1),
+                     random=~vs(ID, Gu= KA),
+                     rcov=~units,
+                     data=pheno[which(pheno$ID %in% rownames(KA)),],
+                     n.PC = 0,
+                     min.MAF=0,
+                     M= GO[!(rownames(GO) %in% miss$ID),],
+                     gTerm = "u:ID")
+
+us <- as.data.frame(t(UniCWT$scores))
+us$Marker <- rownames(us)
+MI2 <- merge(markers,us,by="Marker",all.x = TRUE)
+colnames(MI2) <- c("Marker","Chrom","Position","ref","alt","CWT_WEO beta","p.val","CWT_WEO Fstat","R2","R2s")
+manhattan(MI2, pch=20,cex=.5, PVCN = "color score")
+
+#CCT_WEO
+miss2 <- pheno[is.na(pheno$CCT_WEO),]
+UniCCT_WEO <- sommer::GWAS(fixed = cbind(CCT_WEO~1),
+                     random=~vs(ID, Gu= KA),
+                     rcov=~units,
+                     data=pheno[which(pheno$ID %in% rownames(KA)),],
+                     n.PC = 0,
+                     min.MAF=0,
+                     M= GO[!(rownames(GO) %in% miss2$ID),],
+                     gTerm = "u:ID")
+
+us2 <- as.data.frame(t(UniCCT_WEO$scores))
+us2$Marker <- rownames(us2)
+MI2_CCT_WEO <- merge(markers,us2,by="Marker",all.x = TRUE)
+colnames(MI2_CCT_WEO) <- c("Marker","Chrom","Position","ref","alt","CCT_WEO beta","p.val","CCT_WEO Fstat","R2","R2s")
+manhattan(MI2_CCT_WEO, pch=20,cex=.5, PVCN = "color score")
+
+#CAWT_WEO
+miss3 <- pheno[is.na(pheno$CAWT_WEO),]
+UniCAWT_WEO <- sommer::GWAS(fixed = cbind(CAWT_WEO~1),
+                     random=~vs(ID, Gu= KA),
+                     rcov=~units,
+                     data=pheno[which(pheno$ID %in% rownames(KA)),],
+                     n.PC = 0,
+                     min.MAF=0,
+                     M= GO[!(rownames(GO) %in% miss3$ID),],
+                     gTerm = "u:ID")
+
+us3 <- as.data.frame(t(UniCAWT_WEO$scores))
+us3$Marker <- rownames(us3)
+MI2_CAWT_WEO <- merge(markers,us3,by="Marker",all.x = TRUE)
+colnames(MI2_CAWT_WEO) <- c("Marker","Chrom","Position","ref","alt","CAWT_WEO beta","p.val","CAWT_WEO Fstat","R2","R2s")
+manhattan(MI2_CAWT_WEO, pch=20,cex=.5, PVCN = "color score")
+
+```
+SAL1
+```{r, echo=FALSE}
+#CWT_SAL1
+miss4 <- pheno[is.na(pheno$CWT_SAL1),]
+UniCWT_SAL1 <- sommer::GWAS(fixed = cbind(CWT_SAL1~1),
+                     random=~vs(ID, Gu= KA),
+                     rcov=~units,
+                     data=pheno[which(pheno$ID %in% rownames(KA)),],
+                     n.PC = 0,
+                     min.MAF=0,
+                     M= GO[!(rownames(GO) %in% miss4$ID),],
+                     gTerm = "u:ID")
+
+us4 <- as.data.frame(t(UniCWT_SAL1$scores))
+us4$Marker <- rownames(us4)
+MI2_CWT_SAL1 <- merge(markers,us4,by="Marker",all.x = TRUE)
+colnames(MI2_CWT_SAL1) <- c("Marker","Chrom","Position","ref","alt","CWT_SAL1 beta","p.val","CWT_SAL1 Fstat","R2","R2s")
+manhattan(MI2_CWT_SAL1, pch=20,cex=.5, PVCN = "color score")
+
+#CCT_SAL1
+miss5 <- pheno[is.na(pheno$CCT_SAL1),]
+UniCCT_SAL1 <- sommer::GWAS(fixed = cbind(CCT_SAL1~1),
+                     random=~vs(ID, Gu= KA),
+                     rcov=~units,
+                     data=pheno[which(pheno$ID %in% rownames(KA)),],
+                     n.PC = 0,
+                     min.MAF=0,
+                     M= GO[!(rownames(GO) %in% miss5$ID),],
+                     gTerm = "u:ID")
+
+us5 <- as.data.frame(t(UniCCT_SAL1$scores))
+us5$Marker <- rownames(us5)
+MI2_CCT_SAL1 <- merge(markers,us5,by="Marker",all.x = TRUE)
+colnames(MI2_CCT_SAL1) <- c("Marker","Chrom","Position","ref","alt","CCT_SAL1 beta","p.val","CCT_SAL1 Fstat","R2","R2s")
+manhattan(MI2_CCT_SAL1, pch=20,cex=.5, PVCN = "color score")
+
+#CAWT_SAL1
+miss6 <- pheno[is.na(pheno$CAWT_SAL1),]
+UniCAWT_SAL1 <- sommer::GWAS(fixed = cbind(CAWT_SAL1~1),
+                     random=~vs(ID, Gu= KA),
+                     rcov=~units,
+                     data=pheno[which(pheno$ID %in% rownames(KA)),],
+                     n.PC = 0,
+                     min.MAF=0,
+                     M= GO[!(rownames(GO) %in% miss6$ID),],
+                     gTerm = "u:ID")
+
+us6 <- as.data.frame(t(UniCAWT_SAL1$scores))
+us6$Marker <- rownames(us6)
+MI2_CAWT_SAL1 <- merge(markers,us6,by="Marker",all.x = TRUE)
+colnames(MI2_CAWT_SAL1) <- c("Marker","Chrom","Position","ref","alt","CAWT_SAL1 beta","p.val","CAWT_SAL1 Fstat","R2","R2s")
+manhattan(MI2_CAWT_SAL1, pch=20,cex=.5, PVCN = "color score")
+```
+
+SAL2
+```{r, echo=FALSE}
+#CWT_SAL2
+miss7 <- pheno[is.na(pheno$CWT_SAL2),]
+UniCWT_SAL2 <- sommer::GWAS(fixed = cbind(CWT_SAL2~1),
+                     random=~vs(ID, Gu= KA),
+                     rcov=~units,
+                     data=pheno[which(pheno$ID %in% rownames(KA)),],
+                     n.PC = 0,
+                     min.MAF=0,
+                     M= GO[!(rownames(GO) %in% miss7$ID),],
+                     gTerm = "u:ID")
+
+us7 <- as.data.frame(t(UniCWT_SAL2$scores))
+us7$Marker <- rownames(us7)
+MI2_CWT_SAL2 <- merge(markers,us7,by="Marker",all.x = TRUE)
+colnames(MI2_CWT_SAL2) <- c("Marker","Chrom","Position","ref","alt","CWT_SAL2 beta","p.val","CWT_SAL2 Fstat","R2","R2s")
+manhattan(MI2_CWT_SAL2, pch=20,cex=.5, PVCN = "color score")
+
+#CCT_SAL1
+miss8 <- pheno[is.na(pheno$CCT_SAL2),]
+UniCCT_SAL2 <- sommer::GWAS(fixed = cbind(CCT_SAL2~1),
+                     random=~vs(ID, Gu= KA),
+                     rcov=~units,
+                     data=pheno[which(pheno$ID %in% rownames(KA)),],
+                     n.PC = 0,
+                     min.MAF=0,
+                     M= GO[!(rownames(GO) %in% miss8$ID),],
+                     gTerm = "u:ID")
+
+us8 <- as.data.frame(t(UniCCT_SAL2$scores))
+us8$Marker <- rownames(us8)
+MI2_CCT_SAL2 <- merge(markers,us8,by="Marker",all.x = TRUE)
+colnames(MI2_CCT_SAL2) <- c("Marker","Chrom","Position","ref","alt","CCT_SAL2 beta","p.val","CCT_SAL2 Fstat","R2","R2s")
+manhattan(MI2_CCT_SAL2, pch=20,cex=.5, PVCN = "color score")
+
+#CAWT_SAL2
+miss9 <- pheno[is.na(pheno$CAWT_SAL2),]
+UniCAWT_SAL2 <- sommer::GWAS(fixed = cbind(CAWT_SAL2~1),
+                     random=~vs(ID, Gu= KA),
+                     rcov=~units,
+                     data=pheno[which(pheno$ID %in% rownames(KA)),],
+                     n.PC = 0,
+                     min.MAF=0,
+                     M= GO[!(rownames(GO) %in% miss9$ID),],
+                     gTerm = "u:ID")
+
+us9 <- as.data.frame(t(UniCAWT_SAL2$scores))
+us9$Marker <- rownames(us9)
+MI2_CAWT_SAL2 <- merge(markers,us9,by="Marker",all.x = TRUE)
+colnames(MI2_CAWT_SAL2) <- c("Marker","Chrom","Position","ref","alt","CAWT_SAL2 beta","p.val","CAWT_SAL2 Fstat","R2","R2s")
+manhattan(MI2_CAWT_SAL2, pch=20,cex=.5, PVCN = "color score")
+```
+
+Checking the outcome
+```{r, echo=FALSE}
+PVAL <-function(score){
+  pval <-sort(10^(-score))
+  return(pval)
+}
+
+lambda <-function(pval){
+  chisq <-qchisq(1-pval,1)
+  lambda <-median(chisq)/qchisq(0.5,1)
+  return(lambda)
+}
+
+pval1<-PVAL(MI2$p.val)
+lambda(pval1)
+qqPlot(pval1)
+
+pval2<-PVAL(MI2_CWT_SAL1$p.val)
+lambda(pval2)
+qqPlot(pval2)
+
+pval3<-PVAL(MI2_CWT_SAL2$p.val)
+lambda(pval3)
+qqPlot(pval3)
+
+pval4<-PVAL(MI2_CCT_WEO$p.val)
+lambda(pval4)
+qqPlot(pval4)
+
+pval5<-PVAL(MI2_CCT_SAL1$p.val)
+lambda(pval5)
+qqPlot(pval5)
+
+pval6<-PVAL(MI2_CCT_SAL2$p.val)
+lambda(pval6)
+qqPlot(pval6)
+
+pval7<-PVAL(MI2_CAWT_WEO$p.val)
+lambda(pval7)
+qqPlot(pval7)
+
+pval8<-PVAL(MI2_CAWT_SAL1$p.val)
+lambda(pval8)
+qqPlot(pval8)
+
+pval9<-PVAL(MI2_CAWT_SAL2$p.val)
+lambda(pval9)
+qqPlot(pval9)
 ```
 
 
+Mutivariate attempt
+```{r, echo=FALSE}
+#CWT_multiple years
+miss10 <- pheno[is.na(pheno$CWT_SAL2),]
+MixCWT_yr <- sommer::GWAS(fixed = cbind(CWT_SAL1,CWT_SAL2)~Year,
+                     random=~vs(ID, Gu= KA),
+                     rcov=~units,
+                     data=pheno[which(pheno$ID %in% rownames(KA)),],
+                     n.PC = 0,
+                     min.MAF=0,
+                     M= GO[!(rownames(GO) %in% miss10$ID),],
+                     gTerm = "u:ID")
+
+us7 <- as.data.frame(t(UniCWT_SAL2$scores))
+us7$Marker <- rownames(us7)
+MI2_CWT_SAL2 <- merge(markers,us7,by="Marker",all.x = TRUE)
+colnames(MI2_CWT_SAL2) <- c("Marker","Chrom","Position","ref","alt","CWT_SAL2 beta","p.val","CWT_SAL2 Fstat","R2","R2s")
+manhattan(MI2_CWT_SAL2, pch=20,cex=.5, PVCN = "color score")
+```

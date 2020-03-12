@@ -1,0 +1,111 @@
+---
+title: "What_if_Polyploid"
+author: "Rachel Olson"
+date: "March 11, 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, echo=FALSE}
+#libraries
+library(qtl);set.seed(043298)
+library("tidyverse")
+library("sommer")
+```
+
+```{r, echo = FALSE}
+#load
+load("FinalProjectData.RData")
+markers <- read_delim("~/R/Classes/PLS298_QuantGen/PLB298FINAL/markers.txt", delim = " ", col_names = c("Chr","Position","Marker","ref","alt"))
+```
+
+```{r, echo=FALSE}
+#adjust PG
+PG <- G + 1 #keep before adding chr and position
+
+#small edits to pheno data
+colnames(pheno)[colnames(pheno) == "Progeny"] = "ID"
+pheno <- pheno[,-5] #remove MotherID
+pheno <- pheno[,-5] #remove FatherID
+pheno[nrow(pheno) +1, ] <- NA #add missing parent to phenotype file
+pheno$ID[nrow(pheno)] <- "inQ5IDMeqY"
+PG <- PG[order(match(rownames(PG),pheno$ID)),] # Reorder genotype dataframe to match
+
+#Add Chromosome and position rows to PG 
+tmarkers <- t(markers); colnames(tmarkers) <- markers$Marker; tmarkerchr <- data.frame(tmarkers["Chr",], tmarkers["Position",]); colnames(tmarkerchr) <- c("Chr", "Position"); markerchr <- t(tmarkerchr)
+PG <- rbind(markerchr, PG)
+
+
+
+#put markers in order
+tPG <- t(PG)
+tPG <- tPG[order(tPG[,1],tPG[,2]),]
+tPG <- tPG[,-2]
+PG <- t(tPG)
+ID <- rownames(PG)
+PG <-cbind(ID,PG)
+rownames(PG) <- NULL
+PG <- gsub("Chr","",PG)
+
+#check G
+#PG[1:3,1:4]
+
+#geno file
+PG <- as.data.frame(PG) #maybe keep? after renaming chromosomes to functional diploid and ordering markers
+write_delim(as.data.frame(PG), "POLYGENO.csv", col_names = T, delim = ",") #also after all PG adjustments
+#pheno <- as.data.frame(pheno) #maybe keep? after renaming chromosomes to functional diploid and ordering markers
+write_delim(as.data.frame(pheno), "PHENO.csv", col_names = T, delim = ",")
+
+```
+
+```{r, echo=FALSE}
+#Add cross
+polycrossobj <- read.cross(format = "csvs", 
+                       dir = "~/R/Classes/PLS298_QuantGen/PLB298FINAL/", 
+                       genfile = "POLYGENO.csv", 
+                       phefile = "PHENO.csv", 
+                       estimate.map = FALSE, 
+                       genotypes = c(0,1,2,3,4), 
+                       na.strings = c("-1",NA))
+summary(polycrossobj)
+polycrossobj <- jittermap(polycrossobj)
+```
+
+```{r, echo=FALSE}
+#look for adjacent duplicates
+polydups <- findDupMarkers(polycrossobj, exact.only = T, adjacent.only = T)
+
+#Are there any progeny with >90% identical genotypes?
+pcommon.geno <- comparegeno(polycrossobj)
+mean(pcommon.geno[lower.tri(pcommon.geno)])
+range(pcommon.geno[lower.tri(pcommon.geno)])
+plot(pcommon.geno)
+summary(pcommon.geno, thresh = 0.9)
+```
+
+```{r, echo=FALSE}
+#Map for Cumulative fruit weight in all env/yrs
+pmap.cross.CWT <- scanone(polycrossobj, pheno.col = c(2,5,8), method = c("em"))
+plot(pmap.cross.CWT)
+summary(pmap.cross.CWT)
+
+#Map for Cumulative fruit count in all env/yrs
+pmap.cross.CCT <- scanone(polycrossobj, pheno.col = c(3,6,9), method = c("em"))
+plot(pmap.cross.CCT)
+summary(pmap.cross.CCT)
+
+#Map for Average fruit weight in all env/yrs
+pmap.cross.CAWT <- scanone(polycrossobj, pheno.col = c(4,7,10), method = c("em"))
+plot(pmap.cross.CAWT)
+summary(pmap.cross.CAWT)
+
+```
+
+GWAS
+```{r, echo=FALSE}
+
+
+```
